@@ -2,7 +2,7 @@ import requests
 import os
 from supabase import create_client, Client
 
-# Récupération sécurisée des accès
+# Récupération des accès Supabase
 URL = os.environ.get("SUPABASE_URL")
 KEY = os.environ.get("SUPABASE_KEY")
 
@@ -11,38 +11,43 @@ if not URL or not KEY:
 
 supabase: Client = create_client(URL, KEY)
 
-# URLs des flux GBFS Vilvolt
 STATUS_URL = "https://gbfs.partners.fifteen.eu/gbfs/epinal/station_status.json"
 INFO_URL = "https://gbfs.partners.fifteen.eu/gbfs/epinal/station_information.json"
 
 def collecter_donnees():
-    # 1. Récupération des noms de stations
+    # 1. Récupération de la correspondance station_id -> nom
     res_info = requests.get(INFO_URL)
     noms_stations = {}
     if res_info.status_code == 200:
-        for st in res_info.json()['data']['stations']:
-            noms_stations[str(st.get('station_id'))] = st.get('name')
+        data_info = res_info.json().get('data', {}).get('stations', [])
+        for st in data_info:
+            s_id = str(st.get('station_id', '')).strip()
+            name = st.get('name')
+            if s_id and name:
+                noms_stations[s_id] = name
 
     # 2. Récupération de l'état en temps réel
     res_status = requests.get(STATUS_URL)
     if res_status.status_code == 200:
-        stations = res_status.json()['data']['stations']
+        stations = res_status.json().get('data', {}).get('stations', [])
         lignes_a_inserer = []
         
         for station in stations:
-            s_id = str(station.get('station_id'))
+            s_id = str(station.get('station_id', '')).strip()
+            nom = noms_stations.get(s_id, "Station inconnue")
+            
             lignes_a_inserer.append({
                 "station_id": s_id,
-                "nom_station": noms_stations.get(s_id, "Inconnue"),
+                "nom_station": nom,
                 "velos_disponibles": station.get('num_bikes_available', 0),
                 "places_libres": station.get('num_docks_available', 0)
             })
         
         if lignes_a_inserer:
             supabase.table("releves_vilvolt").insert(lignes_a_inserer).execute()
-            print(f"Succès : {len(lignes_a_inserer)} stations enregistrées avec leurs noms !")
+            print(f"Succès : {len(lignes_a_inserer)} stations insérées !")
     else:
-        print(f"Erreur HTTP : {res_status.status_code}")
+        print(f"Erreur lors de la récupération des statuts: {res_status.status_code}")
 
 if __name__ == "__main__":
     collecter_donnees()
