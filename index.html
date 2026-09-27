@@ -227,7 +227,6 @@
   let chart = null;
   let map = null;
   let marqueurs = {};
-  let coordsCache = {};
   let donneesGlobales = [];
 
   function remplirHeuresEtMinutes() {
@@ -267,33 +266,43 @@
     setTimeout(() => { if (map) map.invalidateSize(); }, 300);
   }
 
-  async function geocoderStation(nomStation) {
-    if (coordsCache[nomStation]) return coordsCache[nomStation];
-    
-    try {
-      let query = encodeURIComponent(`Station ${nomStation}, Épinal, Vosges, France`);
-      let response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&countrycodes=fr`);
-      let data = await response.json();
-
-      if (!data || data.length === 0) {
-        query = encodeURIComponent(`${nomStation}, Épinal, Vosges, France`);
-        response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&countrycodes=fr`);
-        data = await response.json();
-      }
-
-      if (data && data.length > 0) {
-        const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-        coordsCache[nomStation] = coords;
-        return coords;
-      }
-    } catch (e) {
-      console.warn("Échec du géocodage pour :", nomStation);
-    }
-
-    return [48.1742, 6.4496];
+  // Nettoyage des chaînes pour comparer les noms de stations Supabase et GBFS
+  function normaliserNom(nom) {
+    return (nom || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
   }
 
-  const attente = ms => new Promise(res => setTimeout(res, ms));
+  async function chargerCoordonneesGBFS() {
+    let dictCoords = {};
+    const urlsGBFS = [
+      "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_information.json",
+      "https://gbfs.partners.fifteen.eu/gbfs/epinal/station_information.json",
+      "https://transport.data.gouv.fr/gbfs/vilvolt/station_information.json"
+    ];
+
+    for (const url of urlsGBFS) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const stations = json?.data?.stations || [];
+        if (stations.length > 0) {
+          stations.forEach(st => {
+            if (st.name && st.lat && st.lon) {
+              dictCoords[normaliserNom(st.name)] = [st.lat, st.lon];
+            }
+          });
+          break; // Si trouvé, on s'arrête
+        }
+      } catch (e) {
+        console.warn("Tentative GBFS échouée sur :", url);
+      }
+    }
+    return dictCoords;
+  }
 
   async function chargerToutesLesStationsDepuisSupabase() {
     const selectStation = document.getElementById('stationSelect');
@@ -302,7 +311,7 @@
     try {
       let stationsUniques = [];
 
-      // Tentative via la vue dédiée ou directement la table principale
+      // 1. Récupération des noms exacts des stations dans Supabase
       const { data: dataVue, error: errVue } = await supabaseClient
         .from('vue_stations')
         .select('nom_station');
@@ -327,6 +336,10 @@
 
       selectStation.innerHTML = "";
 
+      // 2. Chargement du dictionnaire des coordonnées GPS officielles Vilvolt (GBFS)
+      const coordsGBFS = await chargerCoordonneesGBFS();
+
+      // 3. Remplissage du selecteur HTML
       for (const nom of stationsUniques) {
         const option = document.createElement('option');
         option.value = nom;
@@ -334,8 +347,24 @@
         selectStation.appendChild(option);
       }
 
+      // 4. Positionnement précis de chaque marqueur sur la carte Leaflet
       for (const nom of stationsUniques) {
-        const coords = await geocoderStation(nom);
+        const nomNorm = normaliserNom(nom);
+        
+        // Recherche de la clé correspondant le mieux dans GBFS
+        let coords = coordsGBFS[nomNorm];
+        if (!coords) {
+          const cleTrouvee = Object.keys(coordsGBFS).find(k => k.includes(nomNorm) || nomNorm.includes(k));
+          if (cleTrouvee) {
+            coords = coordsGBFS[cleTrouvee];
+          }
+        }
+
+        // Si non trouvé dans le flux GBFS, fallback par défaut au centre d'Épinal
+        if (!coords) {
+          coords = [48.1742, 6.4496];
+        }
+
         if (!marqueurs[nom]) {
           const marker = L.marker(coords).addTo(map);
           marker.bindPopup(`<b>${nom}</b>`);
@@ -345,7 +374,6 @@
           });
           marqueurs[nom] = marker;
         }
-        await attente(150);
       }
 
       if (stationsUniques.length > 0) {
@@ -400,7 +428,21 @@
         console.error("Erreur de requête :", error);
         donneesGlobales = [];
       } else {
-        donneesGlobales = data || [];
+        // Décalage UTC -> Heure locale utilisateur (ex: UTC+1 ou UTC+2)
+        const decalageHeures = -new Date().getTimezoneOffset() / 60;
+
+        donneesGlobales = (data || []).map(d => {
+          let heureLocale = (d.heure + decalageHeures) % 24;
+          if (heureLocale < 0) heureLocale += 24;
+
+          return {
+            ...d,
+            heure: heureLocale
+          };
+        });
+
+        // Tri par heure locale croissante
+        donneesGlobales.sort((a, b) => (a.heure * 60 + a.minute) - (b.heure * 60 + b.minute));
       }
     } catch (e) {
       console.error("Erreur lors du chargement des données du graphique :", e);
