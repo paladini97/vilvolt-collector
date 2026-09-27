@@ -1,5 +1,6 @@
 import os
 import requests
+from datetime import datetime, timezone
 from supabase import create_client, Client
 
 # Configuration Supabase
@@ -25,20 +26,27 @@ def collecter_donnees():
         stations_info = {s['station_id']: s['name'] for s in res_info.json()['data']['stations']}
         stations_status = res_status.json()['data']['stations']
 
+        # Date/heure UTC courante au format ISO
+        maintenant = datetime.now(timezone.utc).isoformat()
+
         enregistrements = []
         for station in stations_status:
             s_id = station['station_id']
             nom = stations_info.get(s_id, f"Station {s_id}")
             velos = station.get('num_bikes_available', 0)
+            docks = station.get('num_docks_available', 0)
 
             enregistrements.append({
+                "station_id": s_id,
                 "nom_station": nom,
-                "velos_disponibles": velos
+                "velos_disponibles": velos,
+                "places_libre": docks, # ou places_libres selon ta colonne
+                "date_releve": maintenant
             })
 
         if enregistrements:
             data, count = supabase.table("releves_vilvolt").insert(enregistrements).execute()
-            print(f"Succès : {len(enregistrements)} stations insérées dans Supabase.")
+            print(f"Succès : {len(enregistrements)} stations insérées dans Supabase à {maintenant}.")
 
     except Exception as e:
         print(f"Erreur lors de la collecte : {e}")
