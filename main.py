@@ -8,16 +8,20 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 URL_STATIONS = "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_information.json"
 URL_STATUS = "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_status.json"
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
 def collecter_donnees():
     try:
         supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-        res_info = requests.get(URL_STATIONS, timeout=10)
-        res_status = requests.get(URL_STATUS, timeout=10)
+        res_info = requests.get(URL_STATIONS, headers=HEADERS, timeout=10)
+        res_status = requests.get(URL_STATUS, headers=HEADERS, timeout=10)
 
         if res_info.status_code != 200 or res_status.status_code != 200:
-            print("Erreur lors de la récupération des API GBFS")
-            return
+            print(f"Erreur API GBFS: Info={res_info.status_code}, Status={res_status.status_code}")
+            raise Exception("L'API GBFS n'a pas répondu avec un code 200.")
 
         stations_info = {s['station_id']: s['name'] for s in res_info.json()['data']['stations']}
         stations_status = res_status.json()['data']['stations']
@@ -40,7 +44,7 @@ def collecter_donnees():
             })
 
         if enregistrements:
-            res = supabase.table("releves_vilvolt").insert(enregistrements).execute()
+            supabase.table("releves_vilvolt").insert(enregistrements).execute()
             print(f"Succès ! {len(enregistrements)} stations insérées à {maintenant}")
 
     except Exception as e:
