@@ -173,7 +173,7 @@
         <option value="4">Jeudi</option>
         <option value="5">Vendredi</option>
         <option value="6">Samedi</option>
-        <option value="0">Dimanche</option>
+        <option value="7">Dimanche</option>
       </select>
     </div>
 
@@ -218,8 +218,6 @@
   // CONFIGURATION SUPABASE
   // =========================================================================
   const SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co";
-  
-  // ---> INSERER VOTRE CLE PUBLIQUE (anon key) DANS LA VARIABLE CI-DESSOUS <---
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnbGJicmNqc3V1b21uamt2aG14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1MzgwMTIsImV4cCI6MjEwNjExNDAxMn0.rxKnU1XYH0smwsnjXtYQpNsZzol-Tg5Ik8ZK-SaiPF4";
 
   const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -266,7 +264,6 @@
     setTimeout(() => { if (map) map.invalidateSize(); }, 300);
   }
 
-  // Nettoyage des chaînes pour comparer les noms de stations Supabase et GBFS
   function normaliserNom(nom) {
     return (nom || "")
       .toLowerCase()
@@ -295,10 +292,10 @@
               dictCoords[normaliserNom(st.name)] = [st.lat, st.lon];
             }
           });
-          break; // Si trouvé, on s'arrête
+          break;
         }
       } catch (e) {
-        console.warn("Tentative GBFS échouée sur :", url);
+        console.warn("Erreur de récupération GBFS :", url);
       }
     }
     return dictCoords;
@@ -311,22 +308,13 @@
     try {
       let stationsUniques = [];
 
-      // 1. Récupération des noms exacts des stations dans Supabase
-      const { data: dataVue, error: errVue } = await supabaseClient
-        .from('vue_stations')
+      const { data: dataTable, error: errTable } = await supabaseClient
+        .from('moyennes_5min')
         .select('nom_station');
 
-      if (!errVue && dataVue && dataVue.length > 0) {
-        stationsUniques = [...new Set(dataVue.map(s => s.nom_station))].sort();
-      } else {
-        const { data: dataTable, error: errTable } = await supabaseClient
-          .from('moyennes_5min')
-          .select('nom_station');
-
-        if (errTable) throw errTable;
-        if (dataTable) {
-          stationsUniques = [...new Set(dataTable.map(s => s.nom_station))].sort();
-        }
+      if (errTable) throw errTable;
+      if (dataTable) {
+        stationsUniques = [...new Set(dataTable.map(s => s.nom_station))].sort();
       }
 
       if (stationsUniques.length === 0) {
@@ -336,10 +324,8 @@
 
       selectStation.innerHTML = "";
 
-      // 2. Chargement du dictionnaire des coordonnées GPS officielles Vilvolt (GBFS)
       const coordsGBFS = await chargerCoordonneesGBFS();
 
-      // 3. Remplissage du selecteur HTML
       for (const nom of stationsUniques) {
         const option = document.createElement('option');
         option.value = nom;
@@ -347,23 +333,16 @@
         selectStation.appendChild(option);
       }
 
-      // 4. Positionnement précis de chaque marqueur sur la carte Leaflet
       for (const nom of stationsUniques) {
         const nomNorm = normaliserNom(nom);
-        
-        // Recherche de la clé correspondant le mieux dans GBFS
         let coords = coordsGBFS[nomNorm];
+
         if (!coords) {
           const cleTrouvee = Object.keys(coordsGBFS).find(k => k.includes(nomNorm) || nomNorm.includes(k));
-          if (cleTrouvee) {
-            coords = coordsGBFS[cleTrouvee];
-          }
+          if (cleTrouvee) coords = coordsGBFS[cleTrouvee];
         }
 
-        // Si non trouvé dans le flux GBFS, fallback par défaut au centre d'Épinal
-        if (!coords) {
-          coords = [48.1742, 6.4496];
-        }
+        if (!coords) coords = [48.1742, 6.4496];
 
         if (!marqueurs[nom]) {
           const marker = L.marker(coords).addTo(map);
@@ -383,7 +362,7 @@
     } catch (e) {
       console.error("Erreur d'accès à Supabase :", e);
       selectStation.innerHTML = "<option>Erreur d'accès aux données</option>";
-      document.getElementById('conseilTexte').innerHTML = `<span class="alert-warn">Impossible de se connecter à la base de données. Vérifiez la clé API Supabase et les accès RLS.</span>`;
+      document.getElementById('conseilTexte').innerHTML = `<span class="alert-warn">Impossible de se connecter à la base de données. Vérifiez la clé API Supabase.</span>`;
     }
   }
 
@@ -391,7 +370,9 @@
     initialiserCarte();
     remplirHeuresEtMinutes();
 
-    const jourActuel = new Date().getDay();
+    // Conversion du jour JS (0=Dimanche) vers ISO Supabase (1=Lundi ... 7=Dimanche)
+    let jourActuel = new Date().getDay();
+    if (jourActuel === 0) jourActuel = 7;
     document.getElementById('jourSelect').value = jourActuel;
 
     await chargerToutesLesStationsDepuisSupabase();
@@ -424,28 +405,14 @@
         .order('heure', { ascending: true })
         .order('minute', { ascending: true });
 
-      if (error) {
-        console.error("Erreur de requête :", error);
+      if (error || !data) {
+        console.error("Erreur de requête Supabase :", error);
         donneesGlobales = [];
       } else {
-        // Décalage UTC -> Heure locale utilisateur (ex: UTC+1 ou UTC+2)
-        const decalageHeures = -new Date().getTimezoneOffset() / 60;
-
-        donneesGlobales = (data || []).map(d => {
-          let heureLocale = (d.heure + decalageHeures) % 24;
-          if (heureLocale < 0) heureLocale += 24;
-
-          return {
-            ...d,
-            heure: heureLocale
-          };
-        });
-
-        // Tri par heure locale croissante
-        donneesGlobales.sort((a, b) => (a.heure * 60 + a.minute) - (b.heure * 60 + b.minute));
+        donneesGlobales = data;
       }
     } catch (e) {
-      console.error("Erreur lors du chargement des données du graphique :", e);
+      console.error("Erreur lors du chargement des données :", e);
       donneesGlobales = [];
     }
 
@@ -460,7 +427,7 @@
     chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: labels.length > 0 ? labels : ['00:00'],
+        labels: labels.length > 0 ? labels : ['Aucune donnée'],
         datasets: [{
           label: `Nombre moyen de vélos disponibles (${station})`,
           data: valeurs.length > 0 ? valeurs : [0],
