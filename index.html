@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InfoVivolt — Statistiques et réservation</title>
   
+  <!-- Inclusions des bibliothèques externes -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -213,12 +214,18 @@
 </footer>
 
 <script>
+  // =========================================================================
+  // CONFIGURATION SUPABASE
+  // =========================================================================
   const SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co";
-  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnbGJicmNqc3V1b21uamt2aG14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1MzgwMTIsImV4cCI6MjEwNjExNDAxMn0.rxKnU1XYH0smwsnjXtYQpNsZzol-Tg5Ik8ZK-SaiPF4"; // Remplacer par la clé publique Supabase
+  
+  // ---> INSERER VOTRE CLE PUBLIQUE (anon key) DANS LA VARIABLE CI-DESSOUS <---
+  const SUPABASE_KEY = "TA_CLE_ANON_PUBLIC";
 
   const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  let chart;
-  let map;
+
+  let chart = null;
+  let map = null;
   let marqueurs = {};
   let coordsCache = {};
   let donneesGlobales = [];
@@ -226,6 +233,9 @@
   function remplirHeuresEtMinutes() {
     const selectH = document.getElementById('heureSelect');
     const selectM = document.getElementById('minuteSelect');
+
+    selectH.innerHTML = "";
+    selectM.innerHTML = "";
 
     for (let h = 0; h < 24; h++) {
       const opt = document.createElement('option');
@@ -254,7 +264,7 @@
       attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    setTimeout(() => map.invalidateSize(), 200);
+    setTimeout(() => { if (map) map.invalidateSize(); }, 300);
   }
 
   async function geocoderStation(nomStation) {
@@ -267,12 +277,6 @@
 
       if (!data || data.length === 0) {
         query = encodeURIComponent(`${nomStation}, Épinal, Vosges, France`);
-        response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&countrycodes=fr`);
-        data = await response.json();
-      }
-
-      if (!data || data.length === 0) {
-        query = encodeURIComponent(`${nomStation}, Vosges, France`);
         response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&countrycodes=fr`);
         data = await response.json();
       }
@@ -298,19 +302,27 @@
     try {
       let stationsUniques = [];
 
-      const resVue = await supabaseClient
+      // Tentative via la vue dédiée ou directement la table principale
+      const { data: dataVue, error: errVue } = await supabaseClient
         .from('vue_stations')
         .select('nom_station');
 
-      if (!resVue.error && resVue.data && resVue.data.length > 0) {
-        stationsUniques = resVue.data.map(s => s.nom_station).sort();
+      if (!errVue && dataVue && dataVue.length > 0) {
+        stationsUniques = [...new Set(dataVue.map(s => s.nom_station))].sort();
       } else {
-        const { data, error } = await supabaseClient
+        const { data: dataTable, error: errTable } = await supabaseClient
           .from('moyennes_5min')
           .select('nom_station');
 
-        if (error) throw error;
-        stationsUniques = [...new Set(data.map(s => s.nom_station))].sort();
+        if (errTable) throw errTable;
+        if (dataTable) {
+          stationsUniques = [...new Set(dataTable.map(s => s.nom_station))].sort();
+        }
+      }
+
+      if (stationsUniques.length === 0) {
+        selectStation.innerHTML = "<option>Aucune station trouvée</option>";
+        return;
       }
 
       selectStation.innerHTML = "";
@@ -333,7 +345,7 @@
           });
           marqueurs[nom] = marker;
         }
-        await attente(200);
+        await attente(150);
       }
 
       if (stationsUniques.length > 0) {
@@ -341,8 +353,9 @@
         changerStationDepuisSelect();
       }
     } catch (e) {
-      console.error("Erreur lors du chargement des stations :", e);
+      console.error("Erreur d'accès à Supabase :", e);
       selectStation.innerHTML = "<option>Erreur d'accès aux données</option>";
+      document.getElementById('conseilTexte').innerHTML = `<span class="alert-warn">Impossible de se connecter à la base de données. Vérifiez la clé API Supabase et les accès RLS.</span>`;
     }
   }
 
@@ -360,7 +373,7 @@
     const stationNom = document.getElementById('stationSelect').value;
     const marker = marqueurs[stationNom];
 
-    if (marker) {
+    if (marker && map) {
       map.panTo(marker.getLatLng());
       marker.openPopup();
     }
@@ -383,20 +396,23 @@
         .order('heure', { ascending: true })
         .order('minute', { ascending: true });
 
-      if (error || !data || data.length === 0) {
+      if (error) {
+        console.error("Erreur de requête :", error);
         donneesGlobales = [];
       } else {
-        donneesGlobales = data;
+        donneesGlobales = data || [];
       }
     } catch (e) {
-      console.error("Erreur graphique :", e);
+      console.error("Erreur lors du chargement des données du graphique :", e);
       donneesGlobales = [];
     }
 
     const labels = donneesGlobales.map(d => `${String(d.heure).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`);
     const valeurs = donneesGlobales.map(d => d.moyenne_velos);
 
-    if (chart) chart.destroy();
+    if (chart) {
+      chart.destroy();
+    }
 
     const ctx = document.getElementById('monGraphique').getContext('2d');
     chart = new Chart(ctx, {
@@ -451,7 +467,7 @@
 
     if (!donneesGlobales || donneesGlobales.length === 0) {
       boxEl.className = "reservation-box";
-      document.getElementById('conseilTexte').innerHTML = `Aucune donnée disponible pour cet horaire.`;
+      document.getElementById('conseilTexte').innerHTML = `Aucune donnée disponible pour cet horaire ou cette station.`;
       return;
     }
 
