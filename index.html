@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Statistiques Vilvolt Épinal</title>
+  
+  <!-- Supabase JS & Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Leaflet CSS & JS pour la carte interactive -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f4f6f8;
+      color: #333;
+    }
+    .container {
+      max-width: 950px;
+      margin: 20px auto;
+      background: white;
+      padding: 30px;
+      border-radius: 14px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    h1 {
+      color: #0d6efd;
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 1.8rem;
+    }
+    p.subtitle {
+      color: #6c757d;
+      margin-bottom: 25px;
+      font-size: 0.95rem;
+    }
+    #map {
+      height: 320px;
+      width: 100%;
+      border-radius: 10px;
+      margin-bottom: 25px;
+      border: 1px solid #dee2e6;
+      z-index: 1;
+    }
+    .controls {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
+    }
+    .control-group {
+      flex: 1;
+      min-width: 220px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #495057;
+      font-size: 0.9rem;
+    }
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #ced4da;
+      font-size: 0.95rem;
+      background-color: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    select:focus {
+      border-color: #0d6efd;
+    }
+    .chart-box {
+      position: relative;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>🚲 Vilvolt Épinal — Carte & Affluence en temps réel</h1>
+  <p class="subtitle">Cliquez sur une station sur la carte ou choisissez-la dans la liste pour voir sa fréquentation moyenne par tranche de 5 minutes.</p>
+
+  <!-- Carte Interactive -->
+  <div id="map"></div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="stationSelect">Station :</label>
+      <select id="stationSelect" onchange="changerStationDepuisSelect()"></select>
+    </div>
+
+    <div class="control-group">
+      <label for="jourSelect">Jour de la semaine :</label>
+      <select id="jourSelect" onchange="chargerGraphique()">
+        <option value="1">Lundi</option>
+        <option value="2">Mardi</option>
+        <option value="3">Mercredi</option>
+        <option value="4">Jeudi</option>
+        <option value="5">Vendredi</option>
+        <option value="6">Samedi</option>
+        <option value="0">Dimanche</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="chart-box">
+    <canvas id="monGraphique"></canvas>
+  </div>
+</div>
+
+<script>
+  // Configuration Supabase
+  const SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co";
+  // Coller la clé anon public Supabase ci-dessous
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnbGJicmNqc3V1b21uamt2aG14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1MzgwMTIsImV4cCI6MjEwNjExNDAxMn0.rxKnU1XYH0smwsnjXtYQpNsZzol-Tg5Ik8ZK-SaiPF4";
+
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  let chart;
+  let map;
+  let marqueurs = {};
+  let donneesStations = [];
+
+  function initialiserCarte() {
+    // Centrer la carte sur Épinal
+    map = L.map('map').setView([48.1742, 6.4496], 13);
+
+    // Fond de carte OpenStreetMap
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+  }
+
+  async function initialiser() {
+    initialiserCarte();
+
+    // Sélectionner automatiquement le jour actuel
+    const jourActuel = new Date().getDay();
+    document.getElementById('jourSelect').value = jourActuel;
+
+    // Récupérer les stations avec leurs coordonnées
+    const { data: stations, error } = await supabaseClient
+      .from('releves_vilvolt')
+      .select('nom_station, latitude, longitude')
+      .not('nom_station', 'is', null);
+
+    if (error) {
+      console.error("Erreur de récupération des stations :", error);
+      return;
+    }
+
+    // Filtrer les doublons de stations
+    const mapUnique = new Map();
+    stations.forEach(s => {
+      if (s.nom_station && !mapUnique.has(s.nom_station)) {
+        mapUnique.set(s.nom_station, s);
+      }
+    });
+
+    donneesStations = Array.from(mapUnique.values()).sort((a, b) => a.nom_station.localeCompare(b.nom_station));
+    const selectStation = document.getElementById('stationSelect');
+
+    donneesStations.forEach((s) => {
+      // Option dans la liste déroulante
+      const option = document.createElement('option');
+      option.value = s.nom_station;
+      option.textContent = s.nom_station;
+      selectStation.appendChild(option);
+
+      // Ajout du marqueur sur la carte si les coordonnées existent
+      if (s.latitude && s.longitude) {
+        const marker = L.marker([s.latitude, s.longitude]).addTo(map);
+        marker.bindPopup(`<b>${s.nom_station}</b>`);
+
+        // Clic sur un marqueur
+        marker.on('click', () => {
+          selectStation.value = s.nom_station;
+          chargerGraphique();
+        });
+
+        marqueurs[s.nom_station] = marker;
+      }
+    });
+
+    if (donneesStations.length > 0) {
+      changerStationDepuisSelect();
+    }
+  }
+
+  function changerStationDepuisSelect() {
+    const stationNom = document.getElementById('stationSelect').value;
+    const marker = marqueurs[stationNom];
+
+    if (marker) {
+      map.panTo(marker.getLatLng());
+      marker.openPopup();
+    }
+
+    chargerGraphique();
+  }
+
+  async function chargerGraphique() {
+    const station = document.getElementById('stationSelect').value;
+    const jour = parseInt(document.getElementById('jourSelect').value);
+
+    if (!station) return;
+
+    // Interroger la vue SQL des moyennes par 5 min
+    const { data, error } = await supabaseClient
+      .from('moyennes_5min')
+      .select('heure, minute, moyenne_velos')
+      .eq('nom_station', station)
+      .eq('jour_semaine', jour)
+      .order('heure', { ascending: true })
+      .order('minute', { ascending: true });
+
+    if (error) {
+      console.error("Erreur de chargement du graphique :", error);
+      return;
+    }
+
+    // Créer les étiquettes de temps (ex: 08:05)
+    const labels = data.map(d => `${String(d.heure).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`);
+    const valeurs = data.map(d => d.moyenne_velos);
+
+    if (chart) chart.destroy();
+
+    const ctx = document.getElementById('monGraphique').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: `Vélos disponibles en moyenne à ${station}`,
+          data: valeurs,
+          borderColor: '#0d6efd',
+          backgroundColor: 'rgba(13, 110, 253, 0.08)',
+          fill: true,
+          tension: 0.25,
+          pointRadius: 3,
+          pointHoverRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: true, position: 'top' }
+        },
+        scales: {
+          y: { 
+            beginAtZero: true, 
+            ticks: { stepSize: 1 },
+            title: { display: true, text: 'Nombre de vélos (arrondi)' } 
+          },
+          x: { 
+            title: { display: true, text: 'Heure de la journée' } 
+          }
+        }
+      }
+    });
+  }
+
+  initialiser();
+</script>
+
+</body>
+</html>
