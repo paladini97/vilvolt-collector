@@ -8,7 +8,6 @@
   <!-- Inclusions des bibliothèques externes -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -36,8 +35,8 @@
       margin-top: 0;
       margin-bottom: 6px;
       text-align: center;
-      text-shadow: 
-        -2px -2px 0 #000,  
+      text-shadow:
+        -2px -2px 0 #000,
          2px -2px 0 #000,
         -2px  2px 0 #000,
          2px  2px 0 #000,
@@ -150,395 +149,471 @@
     }
   </style>
 </head>
+
 <body>
+  <div class="container">
+    <h1>InfoVivolt</h1>
+    <p class="subtitle">Consultation de la disponibilité des vélos et aide au choix de l'horaire de réservation</p>
 
-<div class="container">
-  <h1>InfoVivolt</h1>
-  <p class="subtitle">Consultation de la disponibilité des vélos et aide au choix de l'horaire de réservation</p>
+    <div id="map"></div>
 
-  <div id="map"></div>
+    <div class="controls">
+      <div class="control-group" style="flex: 2; min-width: 200px;">
+        <label for="stationSelect">Station :</label>
+        <select id="stationSelect" onchange="changerStationDepuisSelect()"></select>
+      </div>
 
-  <div class="controls">
-    <div class="control-group" style="flex: 2; min-width: 200px;">
-      <label for="stationSelect">Station :</label>
-      <select id="stationSelect" onchange="changerStationDepuisSelect()"></select>
+      <div class="control-group">
+        <label for="jourSelect">Jour :</label>
+        <select id="jourSelect" onchange="chargerGraphique()">
+          <option value="1">Lundi</option>
+          <option value="2">Mardi</option>
+          <option value="3">Mercredi</option>
+          <option value="4">Jeudi</option>
+          <option value="5">Vendredi</option>
+          <option value="6">Samedi</option>
+          <option value="7">Dimanche</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="heureSelect">Heure :</label>
+        <select id="heureSelect" onchange="calculerConseilMinute()"></select>
+      </div>
+
+      <div class="control-group">
+        <label for="minuteSelect">Minute (0-59) :</label>
+        <select id="minuteSelect" onchange="calculerConseilMinute()"></select>
+      </div>
+
+      <div class="control-group">
+        <label for="delaiSelect">Anticipation minimale :</label>
+        <select id="delaiSelect" onchange="calculerConseilMinute()">
+          <option value="1">1 minute avant</option>
+          <option value="2">2 minutes avant</option>
+          <option value="3" selected>3 minutes avant</option>
+          <option value="4">4 minutes avant</option>
+          <option value="5">5 minutes avant</option>
+        </select>
+      </div>
     </div>
 
-    <div class="control-group">
-      <label for="jourSelect">Jour :</label>
-      <select id="jourSelect" onchange="chargerGraphique()">
-        <option value="1">Lundi</option>
-        <option value="2">Mardi</option>
-        <option value="3">Mercredi</option>
-        <option value="4">Jeudi</option>
-        <option value="5">Vendredi</option>
-        <option value="6">Samedi</option>
-        <option value="7">Dimanche</option>
-      </select>
+    <div id="boxConseil" class="reservation-box">
+      <h3>Recommandation de réservation</h3>
+      <p id="conseilTexte">Veuillez sélectionner une station et un horaire pour afficher les informations.</p>
     </div>
 
-    <div class="control-group">
-      <label for="heureSelect">Heure :</label>
-      <select id="heureSelect" onchange="calculerConseilMinute()"></select>
-    </div>
-
-    <div class="control-group">
-      <label for="minuteSelect">Minute (0-59) :</label>
-      <select id="minuteSelect" onchange="calculerConseilMinute()"></select>
-    </div>
-
-    <div class="control-group">
-      <label for="delaiSelect">Anticipation minimale :</label>
-      <select id="delaiSelect" onchange="calculerConseilMinute()">
-        <option value="1">1 minute avant</option>
-        <option value="2">2 minutes avant</option>
-        <option value="3" selected>3 minutes avant</option>
-        <option value="4">4 minutes avant</option>
-        <option value="5">5 minutes avant</option>
-      </select>
+    <div class="chart-box">
+      <canvas id="monGraphique"></canvas>
     </div>
   </div>
 
-  <div id="boxConseil" class="reservation-box">
-    <h3>Recommandation de réservation</h3>
-    <p id="conseilTexte">Veuillez sélectionner une station et un horaire pour afficher les informations.</p>
-  </div>
+  <footer>
+    Créé par Patrick Laurent le poisson
+  </footer>
 
-  <div class="chart-box">
-    <canvas id="monGraphique"></canvas>
-  </div>
-</div>
+  <script>
+    // =========================================================================
+    // CONFIGURATION SUPABASE
+    // =========================================================================
 
-<footer>
-  Créé par Patrick Laurent le poisson
-</footer>
+    const SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnbGJicmNqc3V1b21uamt2aG14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1MzgwMTIsImV4cCI6MjEwNjExNDAxMn0.rxKnU1XYH0smwsnjXtYQpNsZzol-Tg5Ik8ZK-SaiPF4";
 
-<script>
-  // =========================================================================
-  // CONFIGURATION SUPABASE
-  // =========================================================================
-  const SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co";
-  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnbGJicmNqc3V1b21uamt2bG14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1MzgwMTIsImV4cCI6MjEwNjExNDAxMn0.rxKnU1XYH0smwsnjXtYQpNsZzol-Tg5Ik8ZK-SaiPF4";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    let chart = null;
+    let map = null;
+    let marqueurs = {};
+    let donneesGlobales = [];
 
-  let chart = null;
-  let map = null;
-  let marqueurs = {};
-  let donneesGlobales = [];
+    function remplirHeuresEtMinutes() {
+      const selectH = document.getElementById('heureSelect');
+      const selectM = document.getElementById('minuteSelect');
 
-  function remplirHeuresEtMinutes() {
-    const selectH = document.getElementById('heureSelect');
-    const selectM = document.getElementById('minuteSelect');
+      selectH.innerHTML = "";
+      selectM.innerHTML = "";
 
-    selectH.innerHTML = "";
-    selectM.innerHTML = "";
+      for (let h = 0; h < 24; h++) {
+        const opt = document.createElement('option');
+        opt.value = h;
+        opt.textContent = `${String(h).padStart(2, '0')} h`;
+        selectH.appendChild(opt);
+      }
 
-    for (let h = 0; h < 24; h++) {
-      const opt = document.createElement('option');
-      opt.value = h;
-      opt.textContent = `${String(h).padStart(2, '0')} h`;
-      selectH.appendChild(opt);
+      for (let m = 0; m < 60; m++) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = `${String(m).padStart(2, '0')} min`;
+        selectM.appendChild(opt);
+      }
+
+      const maintenant = new Date();
+      selectH.value = maintenant.getHours();
+      selectM.value = maintenant.getMinutes();
     }
 
-    for (let m = 0; m < 60; m++) {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = `${String(m).padStart(2, '0')} min`;
-      selectM.appendChild(opt);
+    function initialiserCarte() {
+      map = L.map('map').setView([48.1742, 6.4496], 13);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      setTimeout(() => { if (map) map.invalidateSize(); }, 300);
     }
 
-    const maintenant = new Date();
-    selectH.value = maintenant.getHours();
-    selectM.value = maintenant.getMinutes();
-  }
+    function normaliserNom(nom) {
+      return (nom || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+    }
 
-  function initialiserCarte() {
-    map = L.map('map').setView([48.1742, 6.4496], 13);
+    async function chargerCoordonneesGBFS() {
+      let dictCoords = {};
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
+      const urlsGBFS = [
+        "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_information.json",
+        "https://gbfs.partners.fifteen.eu/gbfs/epinal/station_information.json",
+        "https://transport.data.gouv.fr/gbfs/vilvolt/station_information.json"
+      ];
 
-    setTimeout(() => { if (map) map.invalidateSize(); }, 300);
-  }
+      for (const url of urlsGBFS) {
+        try {
+          const res = await fetch(url);
 
-  function normaliserNom(nom) {
-    return (nom || "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]/g, "");
-  }
+          if (!res.ok) continue;
 
-  async function chargerCoordonneesGBFS() {
-    let dictCoords = {};
-    const urlsGBFS = [
-      "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_information.json",
-      "https://gbfs.partners.fifteen.eu/gbfs/epinal/station_information.json",
-      "https://transport.data.gouv.fr/gbfs/vilvolt/station_information.json"
-    ];
+          const json = await res.json();
+          const stations = json?.data?.stations || [];
 
-    for (const url of urlsGBFS) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) continue;
-        const json = await res.json();
-        const stations = json?.data?.stations || [];
-        if (stations.length > 0) {
-          stations.forEach(st => {
-            if (st.name && st.lat && st.lon) {
-              dictCoords[normaliserNom(st.name)] = [st.lat, st.lon];
-            }
-          });
-          break;
+          if (stations.length > 0) {
+            stations.forEach(st => {
+              if (st.name && st.lat && st.lon) {
+                dictCoords[normaliserNom(st.name)] = [st.lat, st.lon];
+              }
+            });
+
+            break;
+          }
+        } catch (e) {
+          console.warn("Erreur de récupération GBFS :", url);
         }
+      }
+
+      return dictCoords;
+    }
+
+    async function chargerToutesLesStationsDepuisSupabase() {
+      const selectStation = document.getElementById('stationSelect');
+      selectStation.innerHTML = "<option>Chargement des stations en cours...</option>";
+
+      try {
+        let stationsUniques = [];
+
+        const { data: dataTable, error: errTable } = await supabaseClient
+          .from('moyennes_5min')
+          .select('nom_station');
+
+        if (errTable) throw errTable;
+
+        if (dataTable) {
+          stationsUniques = [...new Set(dataTable.map(s => s.nom_station))].sort();
+        }
+
+        if (stationsUniques.length === 0) {
+          selectStation.innerHTML = "<option>Aucune station trouvée</option>";
+          return;
+        }
+
+        selectStation.innerHTML = "";
+
+        const coordsGBFS = await chargerCoordonneesGBFS();
+
+        for (const nom of stationsUniques) {
+          const option = document.createElement('option');
+          option.value = nom;
+          option.textContent = nom;
+          selectStation.appendChild(option);
+        }
+
+        for (const nom of stationsUniques) {
+          const nomNorm = normaliserNom(nom);
+          let coords = coordsGBFS[nomNorm];
+
+          if (!coords) {
+            const cleTrouvee = Object.keys(coordsGBFS).find(k =>
+              k.includes(nomNorm) || nomNorm.includes(k)
+            );
+
+            if (cleTrouvee) coords = coordsGBFS[cleTrouvee];
+          }
+
+          if (!coords) coords = [48.1742, 6.4496];
+
+          if (!marqueurs[nom]) {
+            const marker = L.marker(coords).addTo(map);
+
+            marker.bindPopup(`<b>${nom}</b>`);
+
+            marker.on('click', () => {
+              selectStation.value = nom;
+              changerStationDepuisSelect();
+            });
+
+            marqueurs[nom] = marker;
+          }
+        }
+
+        if (stationsUniques.length > 0) {
+          selectStation.value = stationsUniques[0];
+          changerStationDepuisSelect();
+        }
+
       } catch (e) {
-        console.warn("Erreur de récupération GBFS :", url);
+        console.error("Erreur d'accès à Supabase :", e);
+
+        selectStation.innerHTML = "<option>Erreur d'accès aux données</option>";
+
+        document.getElementById('conseilTexte').innerHTML =
+          `<span class="alert-warn">Impossible de se connecter à la base de données. Vérifiez la clé API Supabase.</span>`;
       }
     }
-    return dictCoords;
-  }
 
-  async function chargerToutesLesStationsDepuisSupabase() {
-    const selectStation = document.getElementById('stationSelect');
-    selectStation.innerHTML = "<option>Chargement des stations en cours...</option>";
+    async function initialiser() {
+      initialiserCarte();
+      remplirHeuresEtMinutes();
 
-    try {
-      let stationsUniques = [];
+      // Conversion du jour JS (0=Dimanche) vers ISO Supabase (1=Lundi ... 7=Dimanche)
+      let jourActuel = new Date().getDay();
 
-      const { data: dataTable, error: errTable } = await supabaseClient
-        .from('moyennes_5min')
-        .select('nom_station');
+      if (jourActuel === 0) jourActuel = 7;
 
-      if (errTable) throw errTable;
-      if (dataTable) {
-        stationsUniques = [...new Set(dataTable.map(s => s.nom_station))].sort();
+      document.getElementById('jourSelect').value = jourActuel;
+
+      await chargerToutesLesStationsDepuisSupabase();
+    }
+
+    function changerStationDepuisSelect() {
+      const stationNom = document.getElementById('stationSelect').value;
+      const marker = marqueurs[stationNom];
+
+      if (marker && map) {
+        map.panTo(marker.getLatLng());
+        marker.openPopup();
       }
 
-      if (stationsUniques.length === 0) {
-        selectStation.innerHTML = "<option>Aucune station trouvée</option>";
+      chargerGraphique();
+    }
+
+    async function chargerGraphique() {
+      const station = document.getElementById('stationSelect').value;
+      const jour = parseInt(document.getElementById('jourSelect').value);
+
+      if (!station || station.includes("Chargement") || station.includes("Erreur")) return;
+
+      try {
+        const { data, error } = await supabaseClient
+          .from('moyennes_5min')
+          .select('heure, minute, moyenne_velos')
+          .eq('nom_station', station)
+          .eq('jour_semaine', jour)
+          .order('heure', { ascending: true })
+          .order('minute', { ascending: true });
+
+        if (error || !data) {
+          console.error("Erreur de requête Supabase :", error);
+          donneesGlobales = [];
+        } else {
+          donneesGlobales = data;
+        }
+
+      } catch (e) {
+        console.error("Erreur lors du chargement des données :", e);
+        donneesGlobales = [];
+      }
+
+      const labels = donneesGlobales.map(d =>
+        `${String(d.heure).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`
+      );
+
+      const valeurs = donneesGlobales.map(d => d.moyenne_velos);
+
+      if (chart) {
+        chart.destroy();
+      }
+
+      const ctx = document.getElementById('monGraphique').getContext('2d');
+
+      chart = new Chart(ctx, {
+        type: 'line',
+
+        data: {
+          labels: labels.length > 0 ? labels : ['Aucune donnée'],
+
+          datasets: [{
+            label: `Nombre moyen de vélos disponibles (${station})`,
+            data: valeurs.length > 0 ? valeurs : [0],
+            borderColor: '#ff7f00',
+            backgroundColor: 'rgba(255, 127, 0, 0.1)',
+            fill: true,
+            tension: 0.2,
+            pointRadius: 2
+          }]
+        },
+
+        options: {
+          responsive: true,
+
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              },
+              title: {
+                display: true,
+                text: 'Vélos disponibles'
+              }
+            },
+
+            x: {
+              title: {
+                display: true,
+                text: 'Horaire (par tranche de 5 min)'
+              }
+            }
+          }
+        }
+      });
+
+      calculerConseilMinute();
+    }
+
+    function estimerVelosAMinute(h, m) {
+      if (!donneesGlobales || donneesGlobales.length === 0) return 0;
+
+      const mBase = Math.floor(m / 5) * 5;
+      const mSuiv = (mBase + 5) % 60;
+      const hSuiv = mBase === 55 ? (h + 1) % 24 : h;
+
+      const d1 = donneesGlobales.find(
+        d => d.heure === h && d.minute === mBase
+      );
+
+      const d2 = donneesGlobales.find(
+        d => d.heure === hSuiv && d.minute === mSuiv
+      );
+
+      const v1 = d1 ? d1.moyenne_velos : 0;
+      const v2 = d2 ? d2.moyenne_velos : v1;
+
+      const fraction = (m - mBase) / 5;
+
+      return v1 + (v2 - v1) * fraction;
+    }
+
+    function calculerConseilMinute() {
+      const hVise = parseInt(document.getElementById('heureSelect').value);
+      const mVise = parseInt(document.getElementById('minuteSelect').value);
+      const delaiMin = parseInt(document.getElementById('delaiSelect').value);
+      const station = document.getElementById('stationSelect').value;
+      const boxEl = document.getElementById('boxConseil');
+
+      if (!donneesGlobales || donneesGlobales.length === 0) {
+        boxEl.className = "reservation-box";
+
+        document.getElementById('conseilTexte').innerHTML =
+          `Aucune donnée disponible pour cet horaire ou cette station.`;
+
         return;
       }
 
-      selectStation.innerHTML = "";
+      const velosVises = estimerVelosAMinute(hVise, mVise);
 
-      const coordsGBFS = await chargerCoordonneesGBFS();
+      let mPrecedente = mVise - 10;
+      let hPrecedente = hVise;
 
-      for (const nom of stationsUniques) {
-        const option = document.createElement('option');
-        option.value = nom;
-        option.textContent = nom;
-        selectStation.appendChild(option);
+      if (mPrecedente < 0) {
+        mPrecedente += 60;
+        hPrecedente = (hVise - 1 + 24) % 24;
       }
 
-      for (const nom of stationsUniques) {
-        const nomNorm = normaliserNom(nom);
-        let coords = coordsGBFS[nomNorm];
+      const velosAvant = estimerVelosAMinute(hPrecedente, mPrecedente);
+      const debitConsommation = (velosAvant - velosVises) / 10;
 
-        if (!coords) {
-          const cleTrouvee = Object.keys(coordsGBFS).find(k => k.includes(nomNorm) || nomNorm.includes(k));
-          if (cleTrouvee) coords = coordsGBFS[cleTrouvee];
-        }
+      let delaiRecommande = delaiMin;
 
-        if (!coords) coords = [48.1742, 6.4496];
-
-        if (!marqueurs[nom]) {
-          const marker = L.marker(coords).addTo(map);
-          marker.bindPopup(`<b>${nom}</b>`);
-          marker.on('click', () => {
-            selectStation.value = nom;
-            changerStationDepuisSelect();
-          });
-          marqueurs[nom] = marker;
-        }
+      if (debitConsommation > 0.3) {
+        delaiRecommande = Math.min(5, delaiMin + 2);
+      } else if (debitConsommation > 0.15) {
+        delaiRecommande = Math.min(5, delaiMin + 1);
       }
 
-      if (stationsUniques.length > 0) {
-        selectStation.value = stationsUniques[0];
-        changerStationDepuisSelect();
+      let mResa = mVise - delaiRecommande;
+      let hResa = hVise;
+
+      if (mResa < 0) {
+        mResa += 60;
+        hResa = (hVise - 1 + 24) % 24;
       }
-    } catch (e) {
-      console.error("Erreur d'accès à Supabase :", e);
-      selectStation.innerHTML = "<option>Erreur d'accès aux données</option>";
-      document.getElementById('conseilTexte').innerHTML = `<span class="alert-warn">Impossible de se connecter à la base de données. Vérifiez la clé API Supabase.</span>`;
-    }
-  }
 
-  async function initialiser() {
-    initialiserCarte();
-    remplirHeuresEtMinutes();
+      const velosResa = estimerVelosAMinute(hResa, mResa);
 
-    // Conversion du jour JS (0=Dimanche) vers ISO Supabase (1=Lundi ... 7=Dimanche)
-    let jourActuel = new Date().getDay();
-    if (jourActuel === 0) jourActuel = 7;
-    document.getElementById('jourSelect').value = jourActuel;
+      const txtVise =
+        `${String(hVise).padStart(2, '0')}:${String(mVise).padStart(2, '0')}`;
 
-    await chargerToutesLesStationsDepuisSupabase();
-  }
+      const txtResa =
+        `${String(hResa).padStart(2, '0')}:${String(mResa).padStart(2, '0')}`;
 
-  function changerStationDepuisSelect() {
-    const stationNom = document.getElementById('stationSelect').value;
-    const marker = marqueurs[stationNom];
-
-    if (marker && map) {
-      map.panTo(marker.getLatLng());
-      marker.openPopup();
-    }
-
-    chargerGraphique();
-  }
-
-  async function chargerGraphique() {
-    const station = document.getElementById('stationSelect').value;
-    const jour = parseInt(document.getElementById('jourSelect').value);
-
-    if (!station || station.includes("Chargement") || station.includes("Erreur")) return;
-
-    try {
-      const { data, error } = await supabaseClient
-        .from('moyennes_5min')
-        .select('heure, minute, moyenne_velos')
-        .eq('nom_station', station)
-        .eq('jour_semaine', jour)
-        .order('heure', { ascending: true })
-        .order('minute', { ascending: true });
-
-      if (error || !data) {
-        console.error("Erreur de requête Supabase :", error);
-        donneesGlobales = [];
-      } else {
-        donneesGlobales = data;
-      }
-    } catch (e) {
-      console.error("Erreur lors du chargement des données :", e);
-      donneesGlobales = [];
-    }
-
-    const labels = donneesGlobales.map(d => `${String(d.heure).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`);
-    const valeurs = donneesGlobales.map(d => d.moyenne_velos);
-
-    if (chart) {
-      chart.destroy();
-    }
-
-    const ctx = document.getElementById('monGraphique').getContext('2d');
-    chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels.length > 0 ? labels : ['Aucune donnée'],
-        datasets: [{
-          label: `Nombre moyen de vélos disponibles (${station})`,
-          data: valeurs.length > 0 ? valeurs : [0],
-          borderColor: '#ff7f00',
-          backgroundColor: 'rgba(255, 127, 0, 0.1)',
-          fill: true,
-          tension: 0.2,
-          pointRadius: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Vélos disponibles' } },
-          x: { title: { display: true, text: 'Horaire (par tranche de 5 min)' } }
-        }
-      }
-    });
-
-    calculerConseilMinute();
-  }
-
-  function estimerVelosAMinute(h, m) {
-    if (!donneesGlobales || donneesGlobales.length === 0) return 0;
-
-    const mBase = Math.floor(m / 5) * 5;
-    const mSuiv = (mBase + 5) % 60;
-    const hSuiv = mBase === 55 ? (h + 1) % 24 : h;
-
-    const d1 = donneesGlobales.find(d => d.heure === h && d.minute === mBase);
-    const d2 = donneesGlobales.find(d => d.heure === hSuiv && d.minute === mSuiv);
-
-    const v1 = d1 ? d1.moyenne_velos : 0;
-    const v2 = d2 ? d2.moyenne_velos : v1;
-
-    const fraction = (m - mBase) / 5;
-    return v1 + (v2 - v1) * fraction;
-  }
-
-  function calculerConseilMinute() {
-    const hVise = parseInt(document.getElementById('heureSelect').value);
-    const mVise = parseInt(document.getElementById('minuteSelect').value);
-    const delaiMin = parseInt(document.getElementById('delaiSelect').value);
-    const station = document.getElementById('stationSelect').value;
-    const boxEl = document.getElementById('boxConseil');
-
-    if (!donneesGlobales || donneesGlobales.length === 0) {
       boxEl.className = "reservation-box";
-      document.getElementById('conseilTexte').innerHTML = `Aucune donnée disponible pour cet horaire ou cette station.`;
-      return;
-    }
 
-    const velosVises = estimerVelosAMinute(hVise, mVise);
+      let conseilHTML =
+        `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
 
-    let mPrecedente = mVise - 10;
-    let hPrecedente = hVise;
-    if (mPrecedente < 0) {
-      mPrecedente += 60;
-      hPrecedente = (hVise - 1 + 24) % 24;
-    }
-    const velosAvant = estimerVelosAMinute(hPrecedente, mPrecedente);
-    const debitConsommation = (velosAvant - velosVises) / 10;
+      if (velosVises <= 0.6) {
+        boxEl.classList.add("critical");
 
-    let delaiRecommande = delaiMin;
+        conseilHTML +=
+          `<span class="alert-warn">Attention : risque élevé d'absence de vélos.</span><br>`;
 
-    if (debitConsommation > 0.3) {
-      delaiRecommande = Math.min(5, delaiMin + 2);
-    } else if (debitConsommation > 0.15) {
-      delaiRecommande = Math.min(5, delaiMin + 1);
-    }
+        conseilHTML +=
+          `La station atteint un niveau très bas autour de ${txtVise}.<br>`;
 
-    let mResa = mVise - delaiRecommande;
-    let hResa = hVise;
-    if (mResa < 0) {
-      mResa += 60;
-      hResa = (hVise - 1 + 24) % 24;
-    }
-    const velosResa = estimerVelosAMinute(hResa, mResa);
+        conseilHTML +=
+          `Conseil : lancez la réservation dès <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant votre départ) pour réserver le prochain vélo disponible.`;
 
-    const txtVise = `${String(hVise).padStart(2, '0')}:${String(mVise).padStart(2, '0')}`;
-    const txtResa = `${String(hResa).padStart(2, '0')}:${String(mResa).padStart(2, '0')}`;
+      } else if (debitConsommation > 0.2) {
+        boxEl.classList.add("warning");
 
-    boxEl.className = "reservation-box";
+        const perteTotale = (debitConsommation * 5).toFixed(1);
 
-    let conseilHTML = `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
+        conseilHTML +=
+          `<b>Période de forte demande :</b> baisse estimée à environ ${perteTotale} vélos toutes les 5 minutes.<br>`;
 
-    if (velosVises <= 0.6) {
-      boxEl.classList.add("critical");
-      conseilHTML += `<span class="alert-warn">Attention : risque élevé d'absence de vélos.</span><br>`;
-      conseilHTML += `La station atteint un niveau très bas autour de ${txtVise}.<br>`;
-      conseilHTML += `Conseil : lancez la réservation dès <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant votre départ) pour réserver le prochain vélo disponible.`;
-    } 
-    else if (debitConsommation > 0.2) {
-      boxEl.classList.add("warning");
-      const perteTotale = (debitConsommation * 5).toFixed(1);
-      conseilHTML += `<b>Période de forte demande :</b> baisse estimée à environ ${perteTotale} vélos toutes les 5 minutes.<br>`;
-      if (delaiRecommande > delaiMin) {
-        conseilHTML += `L'anticipation recommandée a été portée de ${delaiMin} à ${delaiRecommande} minutes afin d'assurer votre réservation.<br>`;
+        if (delaiRecommande > delaiMin) {
+          conseilHTML +=
+            `L'anticipation recommandée a été portée de ${delaiMin} à ${delaiRecommande} minutes afin d'assurer votre réservation.<br>`;
+        }
+
+        conseilHTML +=
+          `Conseil : effectuez votre réservation à <span class="highlight">${txtResa}</span> (environ ${velosResa.toFixed(1)} vélos encore disponibles à cet instant).`;
+
+      } else {
+        conseilHTML +=
+          `<b>Fréquentation normale :</b> la disponibilité reste stable sur ce créneau.<br>`;
+
+        conseilHTML +=
+          `Conseil : vous pouvez réserver votre vélo à <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant).`;
       }
-      conseilHTML += `Conseil : effectuez votre réservation à <span class="highlight">${txtResa}</span> (environ ${velosResa.toFixed(1)} vélos encore disponibles à cet instant).`;
-    } 
-    else {
-      conseilHTML += `<b>Fréquentation normale :</b> la disponibilité reste stable sur ce créneau.<br>`;
-      conseilHTML += `Conseil : vous pouvez réserver votre vélo à <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant).`;
+
+      document.getElementById('conseilTexte').innerHTML = conseilHTML;
     }
 
-    document.getElementById('conseilTexte').innerHTML = conseilHTML;
-  }
-
-  window.addEventListener('DOMContentLoaded', initialiser);
-</script>
-
+    window.addEventListener('DOMContentLoaded', initialiser);
+  </script>
 </body>
 </html>
