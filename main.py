@@ -47,9 +47,10 @@ def collecter_donnees():
             supabase.table("releves_vilvolt").insert(enregistrements).execute()
             print(f"Succès ! {len(enregistrements)} stations insérées à {maintenant}")
 
-    except Exception as e:
-        print(f"Erreur lors de la collecte : {e}")
-        raise e
+    # Exemple de modification dans ton bloc de vérification :
+if response_stations.status_code != 200 or response_status.status_code != 200:
+    print(f"⚠️ Le serveur Vilvolt est en maintenance ou injoignable (Status: {response_status.status_code}). Le script s'arrête en douceur.")
+    exit(0)  # Arrête le script proprement sans faire échouer GitHub Actions en rouge
 
 if __name__ == "__main__":
     collecter_donnees()
