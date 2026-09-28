@@ -1,218 +1,3 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>InfoVivolt — Statistiques et réservation</title>
-  
-  <!-- Inclusions des bibliothèques externes -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <style>
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background-color: #ff7f00;
-      color: #222222;
-    }
-    
-    .container {
-      max-width: 950px;
-      margin: 20px auto;
-      background: #ffffff;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-    }
-    
-    h1 {
-      color: #ffffff;
-      font-size: 2.8rem;
-      margin-top: 0;
-      margin-bottom: 6px;
-      text-align: center;
-      text-shadow: 
-        -2px -2px 0 #000,  
-         2px -2px 0 #000,
-        -2px  2px 0 #000,
-         2px  2px 0 #000,
-        -3px  0px 0 #000,
-         3px  0px 0 #000,
-         0px -3px 0 #000,
-         0px  3px 0 #000;
-      letter-spacing: 1px;
-    }
-    
-    p.subtitle {
-      color: #444444;
-      margin-bottom: 25px;
-      font-size: 1rem;
-      text-align: center;
-    }
-    
-    #map {
-      height: 350px;
-      width: 100%;
-      border-radius: 8px;
-      margin-bottom: 25px;
-      border: 1px solid #cccccc;
-      z-index: 1;
-    }
-    
-    .controls {
-      display: flex;
-      gap: 15px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-    
-    .control-group {
-      flex: 1;
-      min-width: 160px;
-    }
-    
-    label {
-      display: block;
-      font-weight: bold;
-      margin-bottom: 6px;
-      color: #333333;
-      font-size: 0.9rem;
-    }
-    
-    select {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 6px;
-      border: 1px solid #cccccc;
-      font-size: 0.95rem;
-      background-color: #ffffff;
-      color: #222222;
-    }
-    
-    .reservation-box {
-      background: #f0f4f8;
-      border-left: 5px solid #2b5797;
-      padding: 16px 20px;
-      border-radius: 6px;
-      margin-bottom: 25px;
-    }
-    
-    .reservation-box.critical {
-      background: #fdf0f0;
-      border-left-color: #d9534f;
-    }
-    
-    .reservation-box.warning {
-      background: #fef8e7;
-      border-left-color: #f0ad4e;
-    }
-    
-    .reservation-box h3 {
-      margin: 0 0 8px 0;
-      font-size: 1.1rem;
-      color: #111111;
-    }
-    
-    .reservation-box p {
-      margin: 0;
-      font-size: 0.95rem;
-      color: #222222;
-      line-height: 1.5;
-    }
-    
-    .highlight {
-      font-weight: bold;
-      color: #000000;
-    }
-    
-    .alert-warn {
-      color: #d9534f;
-      font-weight: bold;
-    }
-    
-    .chart-box {
-      position: relative;
-      margin-top: 15px;
-    }
-
-    footer {
-      text-align: center;
-      margin-top: 25px;
-      color: #ffffff;
-      font-size: 0.9rem;
-      font-weight: 500;
-      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-    }
-  </style>
-</head>
-<body>
-
-<div class="container">
-  <h1>InfoVivolt</h1>
-  <p class="subtitle">Consultation de la disponibilité des vélos et aide au choix de l'horaire de réservation</p>
-
-  <div id="map"></div>
-
-  <div class="controls">
-    <div class="control-group" style="flex: 2; min-width: 200px;">
-      <label for="stationSelect">Station :</label>
-      <select id="stationSelect" onchange="changerStationDepuisSelect()"></select>
-    </div>
-
-    <div class="control-group">
-      <label for="jourSelect">Jour :</label>
-      <select id="jourSelect" onchange="chargerGraphique()">
-        <option value="1">Lundi</option>
-        <option value="2">Mardi</option>
-        <option value="3">Mercredi</option>
-        <option value="4">Jeudi</option>
-        <option value="5">Vendredi</option>
-        <option value="6">Samedi</option>
-        <option value="7">Dimanche</option>
-      </select>
-    </div>
-
-    <div class="control-group">
-      <label for="heureSelect">Heure :</label>
-      <select id="heureSelect" onchange="calculerConseilMinute()"></select>
-    </div>
-
-    <div class="control-group">
-      <label for="minuteSelect">Minute (0-59) :</label>
-      <select id="minuteSelect" onchange="calculerConseilMinute()"></select>
-    </div>
-
-    <div class="control-group">
-      <label for="delaiSelect">Anticipation minimale :</label>
-      <select id="delaiSelect" onchange="calculerConseilMinute()">
-        <option value="1">1 minute avant</option>
-        <option value="2">2 minutes avant</option>
-        <option value="3" selected>3 minutes avant</option>
-        <option value="4">4 minutes avant</option>
-        <option value="5">5 minutes avant</option>
-      </select>
-    </div>
-  </div>
-
-  <div id="boxConseil" class="reservation-box">
-    <h3>Recommandation de réservation</h3>
-    <p id="conseilTexte">Veuillez sélectionner une station et un horaire pour afficher les informations.</p>
-  </div>
-
-  <div class="chart-box">
-    <canvas id="monGraphique"></canvas>
-  </div>
-</div>
-
-<footer>
-  Créé par Patrick Laurent le poisson
-</footer>
-
 <script>
   // =========================================================================
   // CONFIGURATION SUPABASE
@@ -226,6 +11,52 @@
   let map = null;
   let marqueurs = {};
   let donneesGlobales = [];
+
+  // =========================================================================
+  // GESTION DE L'HEURE FRANÇAISE
+  // =========================================================================
+
+  // Transforme une heure UTC en heure française.
+  // Europe/Paris gère automatiquement UTC+1 en hiver et UTC+2 en été.
+  function convertirHeureFrance(heureUTC, minuteUTC) {
+    const maintenant = new Date();
+
+    // On crée une date fictive en UTC avec l'heure provenant de Supabase.
+    const dateUTC = new Date(Date.UTC(
+      maintenant.getUTCFullYear(),
+      maintenant.getUTCMonth(),
+      maintenant.getUTCDate(),
+      heureUTC,
+      minuteUTC,
+      0
+    ));
+
+    const formatter = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+
+    const texte = formatter.format(dateUTC);
+
+    const [h, m] = texte.split(':').map(Number);
+
+    return {
+      heure: h,
+      minute: m
+    };
+  }
+
+  function heureFranceTexte(heureUTC, minuteUTC) {
+    const heure = convertirHeureFrance(heureUTC, minuteUTC);
+
+    return `${String(heure.heure).padStart(2, '0')}:${String(heure.minute).padStart(2, '0')}`;
+  }
+
+  // =========================================================================
+  // REMPLISSAGE DES HEURES ET MINUTES
+  // =========================================================================
 
   function remplirHeuresEtMinutes() {
     const selectH = document.getElementById('heureSelect');
@@ -248,20 +79,28 @@
       selectM.appendChild(opt);
     }
 
+    // Heure actuelle du navigateur = heure locale de l'utilisateur.
     const maintenant = new Date();
+
     selectH.value = maintenant.getHours();
     selectM.value = maintenant.getMinutes();
   }
 
+  // =========================================================================
+  // CARTE
+  // =========================================================================
+
   function initialiserCarte() {
     map = L.map('map').setView([48.1742, 6.4496], 13);
-    
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    setTimeout(() => { if (map) map.invalidateSize(); }, 300);
+    setTimeout(() => {
+      if (map) map.invalidateSize();
+    }, 300);
   }
 
   function normaliserNom(nom) {
@@ -272,8 +111,13 @@
       .replace(/[^a-z0-9]/g, "");
   }
 
+  // =========================================================================
+  // GBFS
+  // =========================================================================
+
   async function chargerCoordonneesGBFS() {
     let dictCoords = {};
+
     const urlsGBFS = [
       "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_information.json",
       "https://gbfs.partners.fifteen.eu/gbfs/epinal/station_information.json",
@@ -283,42 +127,58 @@
     for (const url of urlsGBFS) {
       try {
         const res = await fetch(url);
+
         if (!res.ok) continue;
+
         const json = await res.json();
         const stations = json?.data?.stations || [];
+
         if (stations.length > 0) {
           stations.forEach(st => {
             if (st.name && st.lat && st.lon) {
               dictCoords[normaliserNom(st.name)] = [st.lat, st.lon];
             }
           });
+
           break;
         }
       } catch (e) {
         console.warn("Erreur de récupération GBFS :", url);
       }
     }
+
     return dictCoords;
   }
 
+  // =========================================================================
+  // STATIONS SUPABASE
+  // =========================================================================
+
   async function chargerToutesLesStationsDepuisSupabase() {
     const selectStation = document.getElementById('stationSelect');
-    selectStation.innerHTML = "<option>Chargement des stations en cours...</option>";
+
+    selectStation.innerHTML =
+      "<option>Chargement des stations en cours...</option>";
 
     try {
       let stationsUniques = [];
 
-      const { data: dataTable, error: errTable } = await supabaseClient
-        .from('moyennes_5min')
-        .select('nom_station');
+      const { data: dataTable, error: errTable } =
+        await supabaseClient
+          .from('moyennes_5min')
+          .select('nom_station');
 
       if (errTable) throw errTable;
+
       if (dataTable) {
-        stationsUniques = [...new Set(dataTable.map(s => s.nom_station))].sort();
+        stationsUniques = [
+          ...new Set(dataTable.map(s => s.nom_station))
+        ].sort();
       }
 
       if (stationsUniques.length === 0) {
-        selectStation.innerHTML = "<option>Aucune station trouvée</option>";
+        selectStation.innerHTML =
+          "<option>Aucune station trouvée</option>";
         return;
       }
 
@@ -328,29 +188,42 @@
 
       for (const nom of stationsUniques) {
         const option = document.createElement('option');
+
         option.value = nom;
         option.textContent = nom;
+
         selectStation.appendChild(option);
       }
 
       for (const nom of stationsUniques) {
         const nomNorm = normaliserNom(nom);
+
         let coords = coordsGBFS[nomNorm];
 
         if (!coords) {
-          const cleTrouvee = Object.keys(coordsGBFS).find(k => k.includes(nomNorm) || nomNorm.includes(k));
-          if (cleTrouvee) coords = coordsGBFS[cleTrouvee];
+          const cleTrouvee = Object.keys(coordsGBFS).find(
+            k => k.includes(nomNorm) || nomNorm.includes(k)
+          );
+
+          if (cleTrouvee) {
+            coords = coordsGBFS[cleTrouvee];
+          }
         }
 
-        if (!coords) coords = [48.1742, 6.4496];
+        if (!coords) {
+          coords = [48.1742, 6.4496];
+        }
 
         if (!marqueurs[nom]) {
           const marker = L.marker(coords).addTo(map);
+
           marker.bindPopup(`<b>${nom}</b>`);
+
           marker.on('click', () => {
             selectStation.value = nom;
             changerStationDepuisSelect();
           });
+
           marqueurs[nom] = marker;
         }
       }
@@ -359,27 +232,60 @@
         selectStation.value = stationsUniques[0];
         changerStationDepuisSelect();
       }
+
     } catch (e) {
       console.error("Erreur d'accès à Supabase :", e);
-      selectStation.innerHTML = "<option>Erreur d'accès aux données</option>";
-      document.getElementById('conseilTexte').innerHTML = `<span class="alert-warn">Impossible de se connecter à la base de données. Vérifiez la clé API Supabase.</span>`;
+
+      selectStation.innerHTML =
+        "<option>Erreur d'accès aux données</option>";
+
+      document.getElementById('conseilTexte').innerHTML =
+        `<span class="alert-warn">
+          Impossible de se connecter à la base de données.
+          Vérifiez la clé API Supabase.
+        </span>`;
     }
   }
 
+  // =========================================================================
+  // INITIALISATION
+  // =========================================================================
+
   async function initialiser() {
     initialiserCarte();
+
     remplirHeuresEtMinutes();
 
-    // Conversion du jour JS (0=Dimanche) vers ISO Supabase (1=Lundi ... 7=Dimanche)
+    // JS :
+    // 0 = dimanche
+    // 1 = lundi
+    // ...
+    // 6 = samedi
+    //
+    // Supabase :
+    // 1 = lundi
+    // ...
+    // 7 = dimanche
+
     let jourActuel = new Date().getDay();
-    if (jourActuel === 0) jourActuel = 7;
+
+    if (jourActuel === 0) {
+      jourActuel = 7;
+    }
+
     document.getElementById('jourSelect').value = jourActuel;
 
     await chargerToutesLesStationsDepuisSupabase();
   }
 
+  // =========================================================================
+  // STATION
+  // =========================================================================
+
   function changerStationDepuisSelect() {
-    const stationNom = document.getElementById('stationSelect').value;
+    const stationNom =
+      document.getElementById('stationSelect').value;
+
     const marker = marqueurs[stationNom];
 
     if (marker && map) {
@@ -390,59 +296,131 @@
     chargerGraphique();
   }
 
-  async function chargerGraphique() {
-    const station = document.getElementById('stationSelect').value;
-    const jour = parseInt(document.getElementById('jourSelect').value);
+  // =========================================================================
+  // GRAPHIQUE
+  // =========================================================================
 
-    if (!station || station.includes("Chargement") || station.includes("Erreur")) return;
+  async function chargerGraphique() {
+    const station =
+      document.getElementById('stationSelect').value;
+
+    const jour =
+      parseInt(document.getElementById('jourSelect').value);
+
+    if (
+      !station ||
+      station.includes("Chargement") ||
+      station.includes("Erreur")
+    ) {
+      return;
+    }
 
     try {
-      const { data, error } = await supabaseClient
-        .from('moyennes_5min')
-        .select('heure, minute, moyenne_velos')
-        .eq('nom_station', station)
-        .eq('jour_semaine', jour)
-        .order('heure', { ascending: true })
-        .order('minute', { ascending: true });
+      const { data, error } =
+        await supabaseClient
+          .from('moyennes_5min')
+          .select('heure, minute, moyenne_velos')
+          .eq('nom_station', station)
+          .eq('jour_semaine', jour)
+          .order('heure', { ascending: true })
+          .order('minute', { ascending: true });
 
       if (error || !data) {
-        console.error("Erreur de requête Supabase :", error);
+        console.error(
+          "Erreur de requête Supabase :",
+          error
+        );
+
         donneesGlobales = [];
+
       } else {
-        donneesGlobales = data;
+
+        // IMPORTANT :
+        // Supabase contient les heures en UTC.
+        // On les convertit ici en heure française.
+        donneesGlobales = data.map(d => {
+
+          const heureFrance =
+            convertirHeureFrance(d.heure, d.minute);
+
+          return {
+            ...d,
+            heureFrance: heureFrance.heure,
+            minuteFrance: heureFrance.minute
+          };
+        });
       }
+
     } catch (e) {
-      console.error("Erreur lors du chargement des données :", e);
+      console.error(
+        "Erreur lors du chargement des données :",
+        e
+      );
+
       donneesGlobales = [];
     }
 
-    const labels = donneesGlobales.map(d => `${String(d.heure).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`);
-    const valeurs = donneesGlobales.map(d => d.moyenne_velos);
+    const labels = donneesGlobales.map(d =>
+      `${String(d.heureFrance).padStart(2, '0')}:${String(d.minuteFrance).padStart(2, '0')}`
+    );
+
+    const valeurs =
+      donneesGlobales.map(d => d.moyenne_velos);
 
     if (chart) {
       chart.destroy();
     }
 
-    const ctx = document.getElementById('monGraphique').getContext('2d');
+    const ctx =
+      document.getElementById('monGraphique').getContext('2d');
+
     chart = new Chart(ctx, {
       type: 'line',
+
       data: {
-        labels: labels.length > 0 ? labels : ['Aucune donnée'],
+        labels: labels.length > 0
+          ? labels
+          : ['Aucune donnée'],
+
         datasets: [{
-          label: `Nombre moyen de vélos disponibles (${station})`,
-          data: valeurs.length > 0 ? valeurs : [0],
+          label:
+            `Nombre moyen de vélos disponibles (${station})`,
+
+          data: valeurs.length > 0
+            ? valeurs
+            : [0],
+
           borderColor: '#ff7f00',
-          backgroundColor: 'rgba(255, 127, 0, 0.1)',
+          backgroundColor:
+            'rgba(255, 127, 0, 0.1)',
+
           fill: true,
           tension: 0.2,
           pointRadius: 2
         }]
       },
+
       options: {
         responsive: true,
+
         scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Vélos disponibles' } },
-          x: { title: { display: true, text: 'Horaire (par tranche de 5 min)' } }
+          y: {
+            beginAtZero: true,
+            ticks: {
+              stepSize: 1
+            },
+            title: {
+              display: true,
+              text: 'Vélos disponibles'
+            }
+          },
+
+          x: {
+            title: {
+              display: true,
+              text: 'Heure française (Europe/Paris)'
+            }
+          }
         }
       }
     });
@@ -450,95 +428,237 @@
     calculerConseilMinute();
   }
 
+  // =========================================================================
+  // ESTIMATION
+  // =========================================================================
+
   function estimerVelosAMinute(h, m) {
-    if (!donneesGlobales || donneesGlobales.length === 0) return 0;
 
-    const mBase = Math.floor(m / 5) * 5;
-    const mSuiv = (mBase + 5) % 60;
-    const hSuiv = mBase === 55 ? (h + 1) % 24 : h;
+    if (
+      !donneesGlobales ||
+      donneesGlobales.length === 0
+    ) {
+      return 0;
+    }
 
-    const d1 = donneesGlobales.find(d => d.heure === h && d.minute === mBase);
-    const d2 = donneesGlobales.find(d => d.heure === hSuiv && d.minute === mSuiv);
+    const mBase =
+      Math.floor(m / 5) * 5;
 
-    const v1 = d1 ? d1.moyenne_velos : 0;
-    const v2 = d2 ? d2.moyenne_velos : v1;
+    const mSuiv =
+      (mBase + 5) % 60;
 
-    const fraction = (m - mBase) / 5;
+    const hSuiv =
+      mBase === 55
+        ? (h + 1) % 24
+        : h;
+
+    const d1 =
+      donneesGlobales.find(
+        d =>
+          d.heureFrance === h &&
+          d.minuteFrance === mBase
+      );
+
+    const d2 =
+      donneesGlobales.find(
+        d =>
+          d.heureFrance === hSuiv &&
+          d.minuteFrance === mSuiv
+      );
+
+    const v1 =
+      d1 ? d1.moyenne_velos : 0;
+
+    const v2 =
+      d2 ? d2.moyenne_velos : v1;
+
+    const fraction =
+      (m - mBase) / 5;
+
     return v1 + (v2 - v1) * fraction;
   }
 
-  function calculerConseilMinute() {
-    const hVise = parseInt(document.getElementById('heureSelect').value);
-    const mVise = parseInt(document.getElementById('minuteSelect').value);
-    const delaiMin = parseInt(document.getElementById('delaiSelect').value);
-    const station = document.getElementById('stationSelect').value;
-    const boxEl = document.getElementById('boxConseil');
+  // =========================================================================
+  // CONSEIL DE RÉSERVATION
+  // =========================================================================
 
-    if (!donneesGlobales || donneesGlobales.length === 0) {
+  function calculerConseilMinute() {
+
+    const hVise =
+      parseInt(
+        document.getElementById('heureSelect').value
+      );
+
+    const mVise =
+      parseInt(
+        document.getElementById('minuteSelect').value
+      );
+
+    const delaiMin =
+      parseInt(
+        document.getElementById('delaiSelect').value
+      );
+
+    const station =
+      document.getElementById('stationSelect').value;
+
+    const boxEl =
+      document.getElementById('boxConseil');
+
+    if (
+      !donneesGlobales ||
+      donneesGlobales.length === 0
+    ) {
       boxEl.className = "reservation-box";
-      document.getElementById('conseilTexte').innerHTML = `Aucune donnée disponible pour cet horaire ou cette station.`;
+
+      document.getElementById(
+        'conseilTexte'
+      ).innerHTML =
+        `Aucune donnée disponible pour cet horaire ou cette station.`;
+
       return;
     }
 
-    const velosVises = estimerVelosAMinute(hVise, mVise);
+    const velosVises =
+      estimerVelosAMinute(hVise, mVise);
 
-    let mPrecedente = mVise - 10;
-    let hPrecedente = hVise;
+    let mPrecedente =
+      mVise - 10;
+
+    let hPrecedente =
+      hVise;
+
     if (mPrecedente < 0) {
       mPrecedente += 60;
-      hPrecedente = (hVise - 1 + 24) % 24;
+      hPrecedente =
+        (hVise - 1 + 24) % 24;
     }
-    const velosAvant = estimerVelosAMinute(hPrecedente, mPrecedente);
-    const debitConsommation = (velosAvant - velosVises) / 10;
 
-    let delaiRecommande = delaiMin;
+    const velosAvant =
+      estimerVelosAMinute(
+        hPrecedente,
+        mPrecedente
+      );
+
+    const debitConsommation =
+      (velosAvant - velosVises) / 10;
+
+    let delaiRecommande =
+      delaiMin;
 
     if (debitConsommation > 0.3) {
-      delaiRecommande = Math.min(5, delaiMin + 2);
+
+      delaiRecommande =
+        Math.min(
+          5,
+          delaiMin + 2
+        );
+
     } else if (debitConsommation > 0.15) {
-      delaiRecommande = Math.min(5, delaiMin + 1);
+
+      delaiRecommande =
+        Math.min(
+          5,
+          delaiMin + 1
+        );
     }
 
-    let mResa = mVise - delaiRecommande;
-    let hResa = hVise;
+    let mResa =
+      mVise - delaiRecommande;
+
+    let hResa =
+      hVise;
+
     if (mResa < 0) {
+
       mResa += 60;
-      hResa = (hVise - 1 + 24) % 24;
+
+      hResa =
+        (hVise - 1 + 24) % 24;
     }
-    const velosResa = estimerVelosAMinute(hResa, mResa);
 
-    const txtVise = `${String(hVise).padStart(2, '0')}:${String(mVise).padStart(2, '0')}`;
-    const txtResa = `${String(hResa).padStart(2, '0')}:${String(mResa).padStart(2, '0')}`;
+    const velosResa =
+      estimerVelosAMinute(
+        hResa,
+        mResa
+      );
 
-    boxEl.className = "reservation-box";
+    const txtVise =
+      `${String(hVise).padStart(2, '0')}:${String(mVise).padStart(2, '0')}`;
 
-    let conseilHTML = `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
+    const txtResa =
+      `${String(hResa).padStart(2, '0')}:${String(mResa).padStart(2, '0')}`;
+
+    boxEl.className =
+      "reservation-box";
+
+    let conseilHTML =
+      `<b>À ${txtVise} :</b> environ ` +
+      `<b>${velosVises.toFixed(1)} vélo(s)</b> ` +
+      `disponible(s) à la station ${station}.<br><br>`;
 
     if (velosVises <= 0.6) {
+
       boxEl.classList.add("critical");
-      conseilHTML += `<span class="alert-warn">Attention : risque élevé d'absence de vélos.</span><br>`;
-      conseilHTML += `La station atteint un niveau très bas autour de ${txtVise}.<br>`;
-      conseilHTML += `Conseil : lancez la réservation dès <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant votre départ) pour réserver le prochain vélo disponible.`;
-    } 
-    else if (debitConsommation > 0.2) {
+
+      conseilHTML +=
+        `<span class="alert-warn">
+          Attention : risque élevé d'absence de vélos.
+        </span><br>`;
+
+      conseilHTML +=
+        `La station atteint un niveau très bas autour de ${txtVise}.<br>`;
+
+      conseilHTML +=
+        `Conseil : lancez la réservation dès ` +
+        `<span class="highlight">${txtResa}</span> ` +
+        `(${delaiRecommande} minutes avant votre départ) ` +
+        `pour réserver le prochain vélo disponible.`;
+
+    } else if (debitConsommation > 0.2) {
+
       boxEl.classList.add("warning");
-      const perteTotale = (debitConsommation * 5).toFixed(1);
-      conseilHTML += `<b>Période de forte demande :</b> baisse estimée à environ ${perteTotale} vélos toutes les 5 minutes.<br>`;
+
+      const perteTotale =
+        (debitConsommation * 5).toFixed(1);
+
+      conseilHTML +=
+        `<b>Période de forte demande :</b> ` +
+        `baisse estimée à environ ${perteTotale} vélos ` +
+        `toutes les 5 minutes.<br>`;
+
       if (delaiRecommande > delaiMin) {
-        conseilHTML += `L'anticipation recommandée a été portée de ${delaiMin} à ${delaiRecommande} minutes afin d'assurer votre réservation.<br>`;
+
+        conseilHTML +=
+          `L'anticipation recommandée a été portée ` +
+          `de ${delaiMin} à ${delaiRecommande} minutes ` +
+          `afin d'assurer votre réservation.<br>`;
       }
-      conseilHTML += `Conseil : effectuez votre réservation à <span class="highlight">${txtResa}</span> (environ ${velosResa.toFixed(1)} vélos encore disponibles à cet instant).`;
-    } 
-    else {
-      conseilHTML += `<b>Fréquentation normale :</b> la disponibilité reste stable sur ce créneau.<br>`;
-      conseilHTML += `Conseil : vous pouvez réserver votre vélo à <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant).`;
+
+      conseilHTML +=
+        `Conseil : effectuez votre réservation à ` +
+        `<span class="highlight">${txtResa}</span> ` +
+        `(environ ${velosResa.toFixed(1)} vélos encore disponibles à cet instant).`;
+
+    } else {
+
+      conseilHTML +=
+        `<b>Fréquentation normale :</b> ` +
+        `la disponibilité reste stable sur ce créneau.<br>`;
+
+      conseilHTML +=
+        `Conseil : vous pouvez réserver votre vélo à ` +
+        `<span class="highlight">${txtResa}</span> ` +
+        `(${delaiRecommande} minutes avant).`;
     }
 
-    document.getElementById('conseilTexte').innerHTML = conseilHTML;
+    document.getElementById(
+      'conseilTexte'
+    ).innerHTML = conseilHTML;
   }
 
-  window.addEventListener('DOMContentLoaded', initialiser);
+  window.addEventListener(
+    'DOMContentLoaded',
+    initialiser
+  );
 </script>
-
-</body>
-</html>
