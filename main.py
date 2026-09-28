@@ -5,8 +5,8 @@ from supabase import create_client, Client
 SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnbGJicmNqc3V1b21uamt2aG14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1MzgwMTIsImV4cCI6MjEwNjExNDAxMn0.rxKnU1XYH0smwsnjXtYQpNsZzol-Tg5Ik8ZK-SaiPF4"
 
-URL_STATIONS = "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_information.json"
-URL_STATUS = "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_status.json"
+print("INFO :", res_info.status_code, res_info.text[:500])
+print("STATUS :", res_status.status_code, res_status.text[:500])
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
