@@ -2,17 +2,25 @@ import requests
 from datetime import datetime, timezone
 from supabase import create_client, Client
 
-SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnbGJicmNqc3V1b21uamt2aG14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1MzgwMTIsImV4cCI6MjEwNjExNDAxMn0.rxKnU1XYH0smwsnjXtYQpNsZzol-Tg5Ik8ZK-SaiPF4"
+# ==========================================
+# CONFIGURATION
+# ==========================================
 
-URL_STATIONS = "URL_STATION_INFORMATION"
-URL_STATUS = "URL_STATION_STATUS"
+SUPABASE_URL = "https://xglbbrcjsuuomnjkvhmx.supabase.co"
+SUPABASE_KEY = "TA_CLE_SUPABASE"
+
+URL_STATIONS = "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_information.json"
+URL_STATUS = "https://gbfs.partners.fifteen.eu/gbfs/epinal/fr/station_status.json"
 
 HEADERS = {
     "User-Agent": "InfoVivolt/1.0",
     "Accept": "application/json"
 }
 
+
+# ==========================================
+# COLLECTE DES DONNÉES
+# ==========================================
 
 def collecter_donnees():
 
@@ -22,66 +30,46 @@ def collecter_donnees():
             SUPABASE_KEY
         )
 
-        # ============================
-        # 1. Informations des stations
-        # ============================
-
+        # Récupération des noms des stations
         res_info = requests.get(
             URL_STATIONS,
             headers=HEADERS,
             timeout=15
         )
 
-        print(
-            "INFO :",
-            res_info.status_code,
-            res_info.text[:300]
-        )
+        print("INFO :", res_info.status_code)
 
-        # ============================
-        # 2. Statut des stations
-        # ============================
-
+        # Récupération des disponibilités
         res_status = requests.get(
             URL_STATUS,
             headers=HEADERS,
             timeout=15
         )
 
-        print(
-            "STATUS :",
-            res_status.status_code,
-            res_status.text[:300]
-        )
+        print("STATUS :", res_status.status_code)
 
-        # ============================
-        # Vérification API
-        # ============================
-
+        # Vérification
         if res_info.status_code != 200:
             print(
-                f"⚠️ station_information refusé : "
+                f"❌ station_information refusé : "
                 f"{res_info.status_code}"
             )
             return
 
         if res_status.status_code != 200:
             print(
-                f"⚠️ station_status refusé : "
+                f"❌ station_status refusé : "
                 f"{res_status.status_code}"
             )
             return
 
-        # ============================
-        # Lecture JSON
-        # ============================
-
+        # Lecture des données
         info_json = res_info.json()
         status_json = res_status.json()
 
         stations_info = {
-            s["station_id"]: s["name"]
-            for s in info_json["data"]["stations"]
+            station["station_id"]: station["name"]
+            for station in info_json["data"]["stations"]
         }
 
         stations_status = status_json["data"]["stations"]
@@ -90,12 +78,9 @@ def collecter_donnees():
             timezone.utc
         ).isoformat()
 
-        # ============================
-        # Préparation Supabase
-        # ============================
-
         enregistrements = []
 
+        # Préparation des données pour Supabase
         for station in stations_status:
 
             station_id = station["station_id"]
@@ -123,33 +108,29 @@ def collecter_donnees():
                 "date_releve": maintenant
             })
 
-        # ============================
-        # Insertion Supabase
-        # ============================
-
+        # Envoi vers Supabase
         if enregistrements:
 
-            result = (
-                supabase
-                .table("releves_vilvolt")
-                .insert(enregistrements)
+            supabase \
+                .table("releves_vilvolt") \
+                .insert(enregistrements) \
                 .execute()
-            )
 
             print(
                 f"✅ {len(enregistrements)} stations "
-                f"insérées à {maintenant}"
+                f"envoyées à Supabase"
             )
 
-    except requests.exceptions.Timeout:
-        print("⚠️ Timeout : Vilvolt n'a pas répondu assez rapidement.")
-
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Erreur HTTP : {e}")
+        print(f"❌ Erreur HTTP : {e}")
 
     except Exception as e:
         print(f"❌ Erreur : {e}")
 
+
+# ==========================================
+# LANCEMENT
+# ==========================================
 
 if __name__ == "__main__":
     collecter_donnees()
