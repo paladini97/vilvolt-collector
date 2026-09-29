@@ -555,7 +555,7 @@
         return {
           actif: true,
           facteur: 1.22,
-          texte: ' Signal écoles : sortie de cours proche, demande potentiellement en hausse.'
+          texte: '🏫 Signal écoles : sortie de cours proche, demande potentiellement en hausse.'
         };
       }
 
@@ -563,7 +563,7 @@
         return {
           actif: true,
           facteur: 1.08,
-          texte: ' Signal écoles : arrivée/reprise des cours proche.'
+          texte: '🏫 Signal écoles : arrivée/reprise des cours proche.'
         };
       }
 
@@ -572,7 +572,7 @@
         return {
           actif: true,
           facteur: 1.12,
-          texte: ' Signal écoles : créneau méridien, déplacements scolaires possibles.'
+          texte: '🏫 Signal écoles : créneau méridien, déplacements scolaires possibles.'
         };
       }
 
@@ -580,14 +580,14 @@
         return {
           actif: true,
           facteur: 1.15,
-          texte: ' Signal écoles : fin de journée scolaire, demande potentiellement renforcée.'
+          texte: '🏫 Signal écoles : fin de journée scolaire, demande potentiellement renforcée.'
         };
       }
 
       return {
         actif: false,
         facteur: 1,
-        texte: ' Signal écoles : pas de pic scolaire identifié sur ce créneau.'
+        texte: '🏫 Signal écoles : pas de pic scolaire identifié sur ce créneau.'
       };
     }
 
@@ -1015,7 +1015,7 @@
       boxEl.className = 'reservation-box';
       let conseilHTML = `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
 
-      conseilHTML += `<b> Prévision +5 min :</b> ${p5.toFixed(1)} vélo(s) probables. `;
+      conseilHTML += `<b>🔮 Prévision +5 min :</b> ${p5.toFixed(1)} vélo(s) probables. `;
       conseilHTML += `Plage prévue sur 5 min : <b>${pirePrevision.toFixed(1)} à ${meilleurePrevision.toFixed(1)}</b> vélo(s).<br>`;
       conseilHTML += `<small>Confiance estimée : ${confiance} % · correction adaptative hebdomadaire : ×${facteurAdaptatif.toFixed(2)}</small><br><br>`;
 
