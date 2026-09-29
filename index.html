@@ -516,7 +516,214 @@
       return v1 + (v2 - v1) * fraction;
     }
 
-    function calculerConseilMinute() {
+    // =========================================================================
+    // SIGNAUX EPINAL / GOLBEY + STATIONS VOISINES
+    // Aucun nouvel élément d'interface : les informations sont ajoutées
+    // directement dans la recommandation existante.
+    // =========================================================================
+
+    const PREVISION_MAX_MINUTES = 5;
+    const TEMPS_DEPLACEMENT_VOISINE = 5;
+    let stationsTempsReel = null;
+    let coordonneesTempsReel = null;
+
+    function estZoneEpinalGolbey(nom) {
+      const n = normaliserNom(nom);
+      return n.includes('epinal') || n.includes('golbey');
+    }
+
+    function minutesDepuisMinuit(h, m) {
+      return h * 60 + m;
+    }
+
+    function dansFenetre(h, m, debut, fin) {
+      const x = minutesDepuisMinuit(h, m);
+      return x >= debut && x <= fin;
+    }
+
+    // Signal horaire basé sur les créneaux récurrents connus des établissements
+    // scolaires d'Épinal. Ce n'est pas un état temps réel d'un établissement.
+    function obtenirSignalEcoles(h, m) {
+      const t = minutesDepuisMinuit(h, m);
+      const sorties = [12 * 60 + 55, 15 * 60 + 50, 17 * 60, 17 * 60 + 55, 18 * 60];
+      const entrees = [8 * 60, 9 * 60 + 50, 14 * 60, 16 * 60 + 5];
+
+      const sortieProche = sorties.some(x => Math.abs(x - t) <= 5);
+      const entreeProche = entrees.some(x => Math.abs(x - t) <= 5);
+
+      if (sortieProche) {
+        return {
+          actif: true,
+          facteur: 1.22,
+          texte: '🏫 Signal écoles : sortie de cours proche, demande potentiellement en hausse.'
+        };
+      }
+
+      if (entreeProche) {
+        return {
+          actif: true,
+          facteur: 1.08,
+          texte: '🏫 Signal écoles : arrivée/reprise des cours proche.'
+        };
+      }
+
+      // Renforcement des périodes de pause méridienne et de fin de journée.
+      if (dansFenetre(h, m, 12 * 60 + 20, 13 * 60 + 30)) {
+        return {
+          actif: true,
+          facteur: 1.12,
+          texte: '🏫 Signal écoles : créneau méridien, déplacements scolaires possibles.'
+        };
+      }
+
+      if (dansFenetre(h, m, 16 * 60 + 45, 18 * 60 + 15)) {
+        return {
+          actif: true,
+          facteur: 1.15,
+          texte: '🏫 Signal écoles : fin de journée scolaire, demande potentiellement renforcée.'
+        };
+      }
+
+      return {
+        actif: false,
+        facteur: 1,
+        texte: '🏫 Signal écoles : pas de pic scolaire identifié sur ce créneau.'
+      };
+    }
+
+    // Signal ferroviaire : on exploite les minutes récurrentes des dessertes
+    // Épinal–Nancy / Épinal–Remiremont. C'est un signal de demande, pas une
+    // confirmation en temps réel d'un train précis.
+    function obtenirSignalFerroviaire(h, m) {
+      const t = minutesDepuisMinuit(h, m);
+      const minutesTrain = [3, 18, 20, 40, 41, 43, 52, 53];
+      const proche = minutesTrain.some(mt => Math.abs((m - mt + 60) % 60) <= 3 || Math.abs(m - mt) <= 3);
+      const picGare = dansFenetre(h, m, 7 * 60, 9 * 60 + 15) ||
+                      dansFenetre(h, m, 16 * 60 + 30, 19 * 60 + 15);
+
+      if (proche && picGare) {
+        return {
+          actif: true,
+          facteur: 1.20,
+          texte: '🚆 Signal ferroviaire : créneau proche d’une arrivée/départ et période de pointe gare.'
+        };
+      }
+
+      if (proche) {
+        return {
+          actif: true,
+          facteur: 1.10,
+          texte: '🚆 Signal ferroviaire : horaire proche d’un créneau de desserte.'
+        };
+      }
+
+      if (picGare) {
+        return {
+          actif: true,
+          facteur: 1.08,
+          texte: '🚆 Signal ferroviaire : période de forte activité autour de la gare.'
+        };
+      }
+
+      return {
+        actif: false,
+        facteur: 1,
+        texte: '🚆 Signal ferroviaire : aucun pic gare particulier détecté.'
+      };
+    }
+
+    function obtenirFacteurHoraireEpinal(h, m) {
+      const t = minutesDepuisMinuit(h, m);
+      if (dansFenetre(h, m, 7 * 60, 9 * 60 + 15)) return 1.08;
+      if (dansFenetre(h, m, 11 * 60 + 30, 14 * 60)) return 1.15;
+      if (dansFenetre(h, m, 16 * 60, 19 * 60 + 15)) return 1.18;
+      if (dansFenetre(h, m, 19 * 60 + 15, 21 * 60)) return 1.08;
+      return 1;
+    }
+
+    async function chargerEtatStationsVoisines() {
+      if (stationsTempsReel && coordonneesTempsReel) return;
+
+      try {
+        const [statusRes, infoRes] = await Promise.all([
+          fetch('https://gbfs.partners.fifteen.eu/gbfs/2.2/epinal/en/station_status.json'),
+          fetch('https://gbfs.partners.fifteen.eu/gbfs/2.2/epinal/en/station_information.json')
+        ]);
+
+        if (!statusRes.ok || !infoRes.ok) throw new Error('GBFS indisponible');
+
+        const statusJson = await statusRes.json();
+        const infoJson = await infoRes.json();
+
+        stationsTempsReel = {};
+        coordonneesTempsReel = {};
+
+        for (const st of (statusJson?.data?.stations || [])) {
+          stationsTempsReel[String(st.station_id)] = {
+            velos: Number(st.num_bikes_available || 0),
+            places: Number(st.num_docks_available || 0)
+          };
+        }
+
+        for (const st of (infoJson?.data?.stations || [])) {
+          if (st.name && Number.isFinite(Number(st.lat)) && Number.isFinite(Number(st.lon))) {
+            coordonneesTempsReel[normaliserNom(st.name)] = {
+              id: String(st.station_id),
+              nom: st.name,
+              lat: Number(st.lat),
+              lon: Number(st.lon)
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('Impossible de charger les stations voisines :', e);
+        stationsTempsReel = {};
+        coordonneesTempsReel = {};
+      }
+    }
+
+    function distanceMetres(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const p1 = lat1 * Math.PI / 180;
+      const p2 = lat2 * Math.PI / 180;
+      const dp = (lat2 - lat1) * Math.PI / 180;
+      const dl = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    async function trouverStationsVoisines(stationNom) {
+      if (!estZoneEpinalGolbey(stationNom)) return [];
+
+      await chargerEtatStationsVoisines();
+      if (!coordonneesTempsReel || !stationsTempsReel) return [];
+
+      const stationNorm = normaliserNom(stationNom);
+      const origine = Object.values(coordonneesTempsReel).find(s =>
+        normaliserNom(s.nom) === stationNorm ||
+        normaliserNom(s.nom).includes(stationNorm) ||
+        stationNorm.includes(normaliserNom(s.nom))
+      );
+
+      if (!origine) return [];
+
+      return Object.values(coordonneesTempsReel)
+        .filter(s => normaliserNom(s.nom) !== normaliserNom(origine.nom))
+        .map(s => {
+          const etat = stationsTempsReel[s.id] || { velos: 0, places: 0 };
+          return {
+            ...s,
+            velos: etat.velos,
+            places: etat.places,
+            distance: distanceMetres(origine.lat, origine.lon, s.lat, s.lon)
+          };
+        })
+        .filter(s => s.distance <= 1000 && s.velos > 0)
+        .sort((a, b) => a.distance - b.distance || b.velos - a.velos)
+        .slice(0, 3);
+    }
+
+    async function calculerConseilMinute() {
       const hVise = parseInt(document.getElementById('heureSelect').value);
       const mVise = parseInt(document.getElementById('minuteSelect').value);
       const delaiMin = parseInt(document.getElementById('delaiSelect').value);
@@ -525,10 +732,8 @@
 
       if (!donneesGlobales || donneesGlobales.length === 0) {
         boxEl.className = "reservation-box";
-
         document.getElementById('conseilTexte').innerHTML =
           `Aucune donnée disponible pour cet horaire ou cette station.`;
-
         return;
       }
 
@@ -536,7 +741,6 @@
 
       let mPrecedente = mVise - 10;
       let hPrecedente = hVise;
-
       if (mPrecedente < 0) {
         mPrecedente += 60;
         hPrecedente = (hVise - 1 + 24) % 24;
@@ -546,68 +750,110 @@
       const debitConsommation = (velosAvant - velosVises) / 10;
 
       let delaiRecommande = delaiMin;
-
       if (debitConsommation > 0.3) {
         delaiRecommande = Math.min(5, delaiMin + 2);
       } else if (debitConsommation > 0.15) {
         delaiRecommande = Math.min(5, delaiMin + 1);
       }
 
+      const signalEcoles = estZoneEpinalGolbey(station)
+        ? obtenirSignalEcoles(hVise, mVise)
+        : { actif: false, facteur: 1, texte: '' };
+      const signalTrain = estZoneEpinalGolbey(station)
+        ? obtenirSignalFerroviaire(hVise, mVise)
+        : { actif: false, facteur: 1, texte: '' };
+
+      // Les signaux ne remplacent jamais l'historique : ils servent uniquement
+      // à renforcer la prudence sur les créneaux sensibles.
+      const facteurHoraire = estZoneEpinalGolbey(station)
+        ? obtenirFacteurHoraireEpinal(hVise, mVise)
+        : 1;
+
+      const facteurContexte = Math.max(
+        facteurHoraire,
+        signalEcoles.facteur,
+        signalTrain.facteur
+      );
+
+      if (estZoneEpinalGolbey(station) && facteurContexte >= 1.18) {
+        delaiRecommande = Math.min(5, delaiRecommande + 1);
+      }
+
+      // Petit balayage prospectif : on ne regarde jamais plus de 5 minutes
+      // devant l'horaire choisi.
+      let pirePrevision = velosVises;
+      for (let i = 1; i <= PREVISION_MAX_MINUTES; i++) {
+        const total = hVise * 60 + mVise + i;
+        const hh = Math.floor(total / 60) % 24;
+        const mm = total % 60;
+        let v = estimerVelosAMinute(hh, mm);
+        if (estZoneEpinalGolbey(station)) {
+          v /= facteurContexte;
+        }
+        pirePrevision = Math.min(pirePrevision, v);
+      }
+
+      if (pirePrevision <= 0.6) {
+        delaiRecommande = Math.min(5, Math.max(delaiRecommande, 4));
+      }
+
       let mResa = mVise - delaiRecommande;
       let hResa = hVise;
-
       if (mResa < 0) {
         mResa += 60;
         hResa = (hVise - 1 + 24) % 24;
       }
 
       const velosResa = estimerVelosAMinute(hResa, mResa);
-
-      const txtVise =
-        `${String(hVise).padStart(2, '0')}:${String(mVise).padStart(2, '0')}`;
-
-      const txtResa =
-        `${String(hResa).padStart(2, '0')}:${String(mResa).padStart(2, '0')}`;
+      const txtVise = `${String(hVise).padStart(2, '0')}:${String(mVise).padStart(2, '0')}`;
+      const txtResa = `${String(hResa).padStart(2, '0')}:${String(mResa).padStart(2, '0')}`;
 
       boxEl.className = "reservation-box";
 
       let conseilHTML =
         `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
 
-      if (velosVises <= 0.6) {
+      if (estZoneEpinalGolbey(station)) {
+        conseilHTML += `<small>${signalTrain.texte}<br>${signalEcoles.texte}</small><br><br>`;
+      }
+
+      if (velosVises <= 0.6 || pirePrevision <= 0.6) {
         boxEl.classList.add("critical");
-
-        conseilHTML +=
-          `<span class="alert-warn">Attention : risque élevé d'absence de vélos.</span><br>`;
-
-        conseilHTML +=
-          `La station atteint un niveau très bas autour de ${txtVise}.<br>`;
-
-        conseilHTML +=
-          `Conseil : lancez la réservation dès <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant votre départ) pour réserver le prochain vélo disponible.`;
-
-      } else if (debitConsommation > 0.2) {
+        conseilHTML += `<span class="alert-warn">Attention : risque élevé d'absence de vélos dans les prochaines minutes.</span><br>`;
+        conseilHTML += `La prévision est volontairement limitée à <b>${PREVISION_MAX_MINUTES} minutes</b> autour de ${txtVise}.<br>`;
+        conseilHTML += `Conseil : lancez la réservation dès <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant votre départ).`;
+      } else if (debitConsommation > 0.2 || facteurContexte >= 1.15) {
         boxEl.classList.add("warning");
-
-        const perteTotale = (debitConsommation * 5).toFixed(1);
-
-        conseilHTML +=
-          `<b>Période de forte demande :</b> baisse estimée à environ ${perteTotale} vélos toutes les 5 minutes.<br>`;
-
+        const perteTotale = (Math.max(0, debitConsommation) * 5).toFixed(1);
+        conseilHTML += `<b>Période de demande renforcée :</b> baisse historique récente d'environ ${perteTotale} vélo(s) toutes les 5 minutes.`;
         if (delaiRecommande > delaiMin) {
-          conseilHTML +=
-            `L'anticipation recommandée a été portée de ${delaiMin} à ${delaiRecommande} minutes afin d'assurer votre réservation.<br>`;
+          conseilHTML += `<br>L'anticipation recommandée passe de ${delaiMin} à ${delaiRecommande} minutes.`;
         }
-
-        conseilHTML +=
-          `Conseil : effectuez votre réservation à <span class="highlight">${txtResa}</span> (environ ${velosResa.toFixed(1)} vélos encore disponibles à cet instant).`;
-
+        conseilHTML += `<br>Conseil : effectuez votre réservation à <span class="highlight">${txtResa}</span> (environ ${velosResa.toFixed(1)} vélo(s) à cet instant).`;
       } else {
-        conseilHTML +=
-          `<b>Fréquentation normale :</b> la disponibilité reste stable sur ce créneau.<br>`;
+        conseilHTML += `<b>Fréquentation normale :</b> la disponibilité reste relativement stable sur ce créneau.<br>`;
+        conseilHTML += `Conseil : vous pouvez réserver votre vélo à <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant).`;
+      }
 
-        conseilHTML +=
-          `Conseil : vous pouvez réserver votre vélo à <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant).`;
+      // Si la station sélectionnée est faible, proposer une station voisine
+      // réellement alimentée en vélos. Le déplacement ajoute automatiquement
+      // 5 minutes d'anticipation à la recommandation.
+      if (estZoneEpinalGolbey(station) && (velosVises <= 1.5 || pirePrevision <= 1.5)) {
+        const voisines = await trouverStationsVoisines(station);
+        if (voisines.length > 0) {
+          const meilleure = voisines[0];
+          const anticipationVoisine = Math.min(5, Math.max(delaiMin, delaiRecommande));
+          let totalAvant = anticipationVoisine + TEMPS_DEPLACEMENT_VOISINE;
+          let hAlt = hVise;
+          let mAlt = mVise - totalAvant;
+          while (mAlt < 0) {
+            mAlt += 60;
+            hAlt = (hAlt - 1 + 24) % 24;
+          }
+
+          conseilHTML += `<br><b>🚲 Alternative :</b> ${meilleure.nom} est à environ ${Math.round(meilleure.distance)} m, avec <b>${meilleure.velos}</b> vélo(s) actuellement disponible(s).`;
+          conseilHTML += `<br>En choisissant cette station, <b>+${TEMPS_DEPLACEMENT_VOISINE} min</b> de déplacement sont automatiquement ajoutées : réservation conseillée vers <span class="highlight">${String(hAlt).padStart(2, '0')}:${String(mAlt).padStart(2, '0')}</span>.`;
+        }
       }
 
       document.getElementById('conseilTexte').innerHTML = conseilHTML;
