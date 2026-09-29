@@ -555,7 +555,7 @@
         return {
           actif: true,
           facteur: 1.22,
-          texte: ' Signal écoles : sortie de cours proche, demande potentiellement en hausse.'
+          texte: '🏫 Signal écoles : sortie de cours proche, demande potentiellement en hausse.'
         };
       }
 
@@ -563,7 +563,7 @@
         return {
           actif: true,
           facteur: 1.08,
-          texte: ' Signal écoles : arrivée/reprise des cours proche.'
+          texte: '🏫 Signal écoles : arrivée/reprise des cours proche.'
         };
       }
 
@@ -572,7 +572,7 @@
         return {
           actif: true,
           facteur: 1.12,
-          texte: ' Signal écoles : créneau méridien, déplacements scolaires possibles.'
+          texte: '🏫 Signal écoles : créneau méridien, déplacements scolaires possibles.'
         };
       }
 
@@ -580,41 +580,88 @@
         return {
           actif: true,
           facteur: 1.15,
-          texte: ' Signal écoles : fin de journée scolaire, demande potentiellement renforcée.'
+          texte: '🏫 Signal écoles : fin de journée scolaire, demande potentiellement renforcée.'
         };
       }
 
       return {
         actif: false,
         facteur: 1,
-        texte: ' Signal écoles : pas de pic scolaire identifié sur ce créneau.'
+        texte: '🏫 Signal écoles : pas de pic scolaire identifié sur ce créneau.'
       };
     }
 
     // Arrivées ferroviaires à la gare d'Épinal.
     // Horaires issus des dessertes publiées par SNCF TER / SNCF Connect.
     // Le modèle utilise la proximité temporelle de l'arrivée et sa provenance.
+    // Horaires journaliers de référence pour le signal ferroviaire.
+    // Les arrivées ci-dessous sont issues des horaires publiés par SNCF TER
+    // et servent de calendrier indicatif : ils ne remplacent pas l'information
+    // temps réel sur les retards ou suppressions.
     const ARRIVEES_GARE_EPINAL = [
+      // Nancy -> Épinal : desserte TER régulière en journée
+      { h: 6, m: 18, provenance: 'Nancy', type: 'TER' },
+      { h: 6, m: 53, provenance: 'Nancy', type: 'TER' },
+      { h: 7, m: 18, provenance: 'Nancy', type: 'TER' },
+      { h: 7, m: 53, provenance: 'Nancy', type: 'TER' },
+      { h: 8, m: 18, provenance: 'Nancy', type: 'TER' },
+      { h: 8, m: 53, provenance: 'Nancy', type: 'TER' },
+      { h: 9, m: 18, provenance: 'Nancy', type: 'TER' },
+      { h: 9, m: 53, provenance: 'Nancy', type: 'TER' },
+      { h: 10, m: 18, provenance: 'Nancy', type: 'TER' },
+      { h: 10, m: 53, provenance: 'Nancy', type: 'TER' },
+      { h: 11, m: 18, provenance: 'Nancy', type: 'TER' },
+      { h: 11, m: 53, provenance: 'Nancy', type: 'TER' },
+      { h: 12, m: 18, provenance: 'Nancy', type: 'TER' },
+      { h: 12, m: 53, provenance: 'Nancy', type: 'TER' },
+      { h: 13, m: 18, provenance: 'Nancy', type: 'TER', numero: '835815' },
+      { h: 13, m: 52, provenance: 'Metz', type: 'TER', numero: '834024' },
+      { h: 14, m: 18, provenance: 'Nancy', type: 'TER', numero: '835819' },
+      { h: 15, m: 18, provenance: 'Nancy', type: 'TER', numero: '835843' },
+      { h: 16, m: 19, provenance: 'Nancy', type: 'TER', numero: '835823' },
+      { h: 16, m: 53, provenance: 'Nancy', type: 'TER', numero: '835769' },
       { h: 17, m: 18, provenance: 'Nancy', type: 'TER', numero: '835825' },
-      { h: 17, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835824' },
-      { h: 18, m: 13, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '430804' },
+      { h: 17, m: 52, provenance: 'Nancy', type: 'TER', numero: '835773' },
       { h: 18, m: 18, provenance: 'Nancy', type: 'TER', numero: '835827' },
-      { h: 18, m: 22, provenance: 'Bruyères', type: 'Car TER', numero: '44889' },
-      { h: 18, m: 41, provenance: 'Remiremont', type: 'TER', numero: '834026' },
-      { h: 18, m: 47, provenance: 'Belfort-Ville', type: 'MOBIGO', numero: '894624' },
       { h: 18, m: 52, provenance: 'Nancy', type: 'TER', numero: '835775' },
       { h: 19, m: 19, provenance: 'Nancy', type: 'TER', numero: '835829' },
+      { h: 20, m: 18, provenance: 'Nancy', type: 'TER', numero: '835831' },
+      { h: 21, m: 18, provenance: 'Nancy', type: 'TER', numero: '835779' },
+      { h: 23, m: 26, provenance: 'Nancy', type: 'Car TER', numero: '433833' },
+      { h: 0, m: 9, provenance: 'Nancy', type: 'Car TER', numero: '433183' },
+
+      // Remiremont -> Épinal
+      { h: 6, m: 41, provenance: 'Remiremont', type: 'TER' },
+      { h: 7, m: 41, provenance: 'Remiremont', type: 'TER' },
+      { h: 8, m: 41, provenance: 'Remiremont', type: 'TER' },
+      { h: 9, m: 41, provenance: 'Remiremont', type: 'TER' },
+      { h: 10, m: 41, provenance: 'Remiremont', type: 'TER' },
+      { h: 11, m: 41, provenance: 'Remiremont', type: 'TER' },
+      { h: 12, m: 41, provenance: 'Remiremont', type: 'TER' },
+      { h: 13, m: 17, provenance: 'Remiremont', type: 'TGV INOUI', numero: '2580' },
+      { h: 13, m: 40, provenance: 'Remiremont', type: 'TER', numero: '835816' },
+      { h: 14, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835818' },
+      { h: 15, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835820' },
+      { h: 16, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835822' },
+      { h: 17, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835824' },
+      { h: 18, m: 41, provenance: 'Remiremont', type: 'TER', numero: '834026' },
+      { h: 19, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835828' },
+
+      // Saint-Dié / Bruyères et autres arrivées observées sur les horaires SNCF
+      { h: 13, m: 17, provenance: 'Remiremont', type: 'TGV INOUI', numero: '2580' },
+      { h: 13, m: 20, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '430802' },
+      { h: 14, m: 24, provenance: 'Bruyères', type: 'Car TER', numero: '44883' },
+      { h: 15, m: 41, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '44885' },
+      { h: 16, m: 3, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '431906' },
+      { h: 18, m: 13, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '430804' },
+      { h: 18, m: 22, provenance: 'Bruyères', type: 'Car TER', numero: '44889' },
+      { h: 18, m: 47, provenance: 'Belfort-Ville', type: 'MOBIGO', numero: '894624' },
       { h: 19, m: 26, provenance: 'Bruyères', type: 'Car TER', numero: '44893' },
       { h: 19, m: 30, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '431908' },
-      { h: 19, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835828' },
-      { h: 20, m: 18, provenance: 'Nancy', type: 'TER', numero: '835831' },
       { h: 20, m: 30, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '430806' },
       { h: 20, m: 39, provenance: 'Paris Est', type: 'TGV INOUI', numero: '2573' },
-      { h: 21, m: 18, provenance: 'Nancy', type: 'TER', numero: '835779' },
       { h: 21, m: 30, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '431910' },
-      { h: 21, m: 42, provenance: 'Belfort-Ville', type: 'MOBIGO', numero: '894630' },
-      { h: 23, m: 26, provenance: 'Nancy', type: 'Car TER', numero: '433833' },
-      { h: 0, m: 9, provenance: 'Nancy', type: 'Car TER', numero: '433183' }
+      { h: 21, m: 42, provenance: 'Belfort-Ville', type: 'MOBIGO', numero: '894630' }
     ];
 
     function minutesTrain(train) {
@@ -638,22 +685,45 @@
     }
 
     function obtenirSignalFerroviaire(h, m) {
-      const trains = obtenirProchainesArriveesTrains(h, m, 3);
-      if (!trains.length) {
-        return { facteur: 1, texte: 'Aucune arrivée ferroviaire disponible.' };
-      }
+      const cible = h * 60 + m;
+      const trainsDuJour = ARRIVEES_GARE_EPINAL
+        .slice()
+        .sort((a, b) => minutesTrain(a) - minutesTrain(b));
 
-      const prochain = trains[0];
-      const facteur = prochain.delta <= 2 ? 1.18 : prochain.delta <= 5 ? 1.11 : prochain.delta <= 10 ? 1.06 : 1;
+      const prochain = trainsDuJour
+        .map(train => ({
+          train,
+          delta: minutesTrain(train) - cible
+        }))
+        .find(x => x.delta >= 0);
 
-      const lignes = trains.map(train => {
-        const quand = train.delta === 0 ? 'maintenant' : `dans ${train.delta} min`;
-        return `${String(train.h).padStart(2, '0')}h${String(train.m).padStart(2, '0')} — ${train.type} ${train.numero}, en provenance de ${train.provenance} (${quand})`;
+      const prochainEffectif = prochain || {
+        train: trainsDuJour[0],
+        delta: minutesTrain(trainsDuJour[0]) + 1440 - cible
+      };
+
+      const facteur = prochainEffectif.delta <= 2 ? 1.18
+        : prochainEffectif.delta <= 5 ? 1.11
+        : prochainEffectif.delta <= 10 ? 1.06
+        : 1;
+
+      const lignes = trainsDuJour.map(train => {
+        const minuteTrain = minutesTrain(train);
+        let delta = minuteTrain - cible;
+        if (delta < 0) delta += 1440;
+
+        let statut;
+        if (delta === 0) statut = 'maintenant';
+        else if (delta < 60) statut = `dans ${delta} min`;
+        else statut = `dans ${Math.floor(delta / 60)} h ${delta % 60} min`;
+
+        const numero = train.numero ? ` ${train.numero}` : '';
+        return `${String(train.h).padStart(2, '0')}h${String(train.m).padStart(2, '0')} — ${train.type}${numero}, en provenance de ${train.provenance} (${statut})`;
       });
 
       return {
         facteur,
-        texte: `Arrivées gare d'Épinal :<br>${lignes.join('<br>')}`
+        texte: `Arrivées gare d'Épinal sur la journée :<br>${lignes.join('<br>')}`
       };
     }
 
@@ -850,15 +920,28 @@
     }
 
     function analyserEffetGarePrecis(h, m) {
-      const train = obtenirProchaineArriveeTrain(h, m);
+      const cible = h * 60 + m;
+      const train = ARRIVEES_GARE_EPINAL
+        .map(t => {
+          let delta = minutesTrain(t) - cible;
+          if (delta < 0) delta += 1440;
+          return { ...t, delta };
+        })
+        .sort((a, b) => a.delta - b.delta)[0];
+
       if (!train) {
         return { facteur: 1, texte: 'Aucune arrivée ferroviaire disponible.' };
       }
 
       const facteur = train.delta <= 2 ? 1.18 : train.delta <= 5 ? 1.11 : train.delta <= 10 ? 1.06 : 1;
+      const quand = train.delta === 0 ? 'maintenant'
+        : train.delta < 60 ? `dans ${train.delta} min`
+        : `dans ${Math.floor(train.delta / 60)} h ${train.delta % 60} min`;
+      const numero = train.numero ? ` ${train.numero}` : '';
+
       return {
         facteur,
-        texte: `Prochaine arrivée : ${String(train.h).padStart(2, '0')}h${String(train.m).padStart(2, '0')} — ${train.type} ${train.numero}, en provenance de ${train.provenance}, dans ${train.delta} min.`
+        texte: `Prochaine arrivée : ${String(train.h).padStart(2, '0')}h${String(train.m).padStart(2, '0')} — ${train.type}${numero}, en provenance de ${train.provenance} (${quand}).`
       };
     }
 
@@ -932,7 +1015,7 @@
       boxEl.className = 'reservation-box';
       let conseilHTML = `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
 
-      conseilHTML += `<b> Prévision +5 min :</b> ${p5.toFixed(1)} vélo(s) probables. `;
+      conseilHTML += `<b>🔮 Prévision +5 min :</b> ${p5.toFixed(1)} vélo(s) probables. `;
       conseilHTML += `Plage prévue sur 5 min : <b>${pirePrevision.toFixed(1)} à ${meilleurePrevision.toFixed(1)}</b> vélo(s).<br>`;
       conseilHTML += `<small>Confiance estimée : ${confiance} % · correction adaptative hebdomadaire : ×${facteurAdaptatif.toFixed(2)}</small><br><br>`;
 
