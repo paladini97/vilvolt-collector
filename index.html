@@ -591,44 +591,69 @@
       };
     }
 
-    // Signal ferroviaire : on exploite les minutes récurrentes des dessertes
-    // Épinal–Nancy / Épinal–Remiremont. C'est un signal de demande, pas une
-    // confirmation en temps réel d'un train précis.
+    // Arrivées ferroviaires à la gare d'Épinal.
+    // Horaires issus des dessertes publiées par SNCF TER / SNCF Connect.
+    // Le modèle utilise la proximité temporelle de l'arrivée et sa provenance.
+    const ARRIVEES_GARE_EPINAL = [
+      { h: 17, m: 18, provenance: 'Nancy', type: 'TER', numero: '835825' },
+      { h: 17, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835824' },
+      { h: 18, m: 13, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '430804' },
+      { h: 18, m: 18, provenance: 'Nancy', type: 'TER', numero: '835827' },
+      { h: 18, m: 22, provenance: 'Bruyères', type: 'Car TER', numero: '44889' },
+      { h: 18, m: 41, provenance: 'Remiremont', type: 'TER', numero: '834026' },
+      { h: 18, m: 47, provenance: 'Belfort-Ville', type: 'MOBIGO', numero: '894624' },
+      { h: 18, m: 52, provenance: 'Nancy', type: 'TER', numero: '835775' },
+      { h: 19, m: 19, provenance: 'Nancy', type: 'TER', numero: '835829' },
+      { h: 19, m: 26, provenance: 'Bruyères', type: 'Car TER', numero: '44893' },
+      { h: 19, m: 30, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '431908' },
+      { h: 19, m: 41, provenance: 'Remiremont', type: 'TER', numero: '835828' },
+      { h: 20, m: 18, provenance: 'Nancy', type: 'TER', numero: '835831' },
+      { h: 20, m: 30, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '430806' },
+      { h: 20, m: 39, provenance: 'Paris Est', type: 'TGV INOUI', numero: '2573' },
+      { h: 21, m: 18, provenance: 'Nancy', type: 'TER', numero: '835779' },
+      { h: 21, m: 30, provenance: 'Saint-Dié-des-Vosges', type: 'Car TER', numero: '431910' },
+      { h: 21, m: 42, provenance: 'Belfort-Ville', type: 'MOBIGO', numero: '894630' },
+      { h: 23, m: 26, provenance: 'Nancy', type: 'Car TER', numero: '433833' },
+      { h: 0, m: 9, provenance: 'Nancy', type: 'Car TER', numero: '433183' }
+    ];
+
+    function minutesTrain(train) {
+      return train.h * 60 + train.m;
+    }
+
+    function obtenirProchainesArriveesTrains(h, m, nombre = 3) {
+      const cible = h * 60 + m;
+      return ARRIVEES_GARE_EPINAL
+        .map(train => {
+          let delta = minutesTrain(train) - cible;
+          if (delta < 0) delta += 1440;
+          return { ...train, delta };
+        })
+        .sort((a, b) => a.delta - b.delta)
+        .slice(0, nombre);
+    }
+
+    function obtenirProchaineArriveeTrain(h, m) {
+      return obtenirProchainesArriveesTrains(h, m, 1)[0] || null;
+    }
+
     function obtenirSignalFerroviaire(h, m) {
-      const t = minutesDepuisMinuit(h, m);
-      const minutesTrain = [3, 18, 20, 40, 41, 43, 52, 53];
-      const proche = minutesTrain.some(mt => Math.abs((m - mt + 60) % 60) <= 3 || Math.abs(m - mt) <= 3);
-      const picGare = dansFenetre(h, m, 7 * 60, 9 * 60 + 15) ||
-                      dansFenetre(h, m, 16 * 60 + 30, 19 * 60 + 15);
-
-      if (proche && picGare) {
-        return {
-          actif: true,
-          facteur: 1.20,
-          texte: ' Signal ferroviaire : créneau proche d’une arrivée/départ et période de pointe gare.'
-        };
+      const trains = obtenirProchainesArriveesTrains(h, m, 3);
+      if (!trains.length) {
+        return { facteur: 1, texte: 'Aucune arrivée ferroviaire disponible.' };
       }
 
-      if (proche) {
-        return {
-          actif: true,
-          facteur: 1.10,
-          texte: ' Signal ferroviaire : horaire proche d’un créneau de desserte.'
-        };
-      }
+      const prochain = trains[0];
+      const facteur = prochain.delta <= 2 ? 1.18 : prochain.delta <= 5 ? 1.11 : prochain.delta <= 10 ? 1.06 : 1;
 
-      if (picGare) {
-        return {
-          actif: true,
-          facteur: 1.08,
-          texte: ' Signal ferroviaire : période de forte activité autour de la gare.'
-        };
-      }
+      const lignes = trains.map(train => {
+        const quand = train.delta === 0 ? 'maintenant' : `dans ${train.delta} min`;
+        return `${String(train.h).padStart(2, '0')}h${String(train.m).padStart(2, '0')} — ${train.type} ${train.numero}, en provenance de ${train.provenance} (${quand})`;
+      });
 
       return {
-        actif: false,
-        facteur: 1,
-        texte: ' Signal ferroviaire : aucun pic gare particulier détecté.'
+        facteur,
+        texte: `Arrivées gare d'Épinal :<br>${lignes.join('<br>')}`
       };
     }
 
@@ -723,6 +748,120 @@
         .slice(0, 3);
     }
 
+    // =========================================================================
+    // PREVISION RENFORCEE : 5 MIN + TENDANCE + APPRENTISSAGE + GARE
+    // =========================================================================
+
+    let historiqueAdaptatif = null;
+
+    function cleApprentissage(station, jour, h) {
+      return `infovivolt_adapt_${normaliserNom(station)}_${jour}_${h}`;
+    }
+
+    function lireCorrectionAdaptive(station, jour, h) {
+      try {
+        const raw = localStorage.getItem(cleApprentissage(station, jour, h));
+        if (!raw) return 1;
+        const obj = JSON.parse(raw);
+        if (!obj || !obj.semaine) return 1;
+        const semaineActuelle = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
+        // La correction est réinitialisée progressivement chaque semaine.
+        if (semaineActuelle - obj.semaine > 4) return 1;
+        return Math.max(0.75, Math.min(1.25, Number(obj.facteur) || 1));
+      } catch (_) {
+        return 1;
+      }
+    }
+
+    function enregistrerCorrectionAdaptive(station, jour, h, facteurObserve) {
+      try {
+        const cle = cleApprentissage(station, jour, h);
+        const semaine = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
+        const ancien = JSON.parse(localStorage.getItem(cle) || 'null');
+        const precedent = ancien && ancien.semaine === semaine ? Number(ancien.facteur) || 1 : 1;
+        // Apprentissage lent : une observation ne peut pas bouleverser le modèle.
+        const nouveau = precedent * 0.85 + facteurObserve * 0.15;
+        localStorage.setItem(cle, JSON.stringify({ semaine, facteur: Math.max(0.75, Math.min(1.25, nouveau)) }));
+      } catch (_) {}
+    }
+
+    async function chargerHistoriqueRecent(station) {
+      if (!station) return [];
+      try {
+        const limite = new Date();
+        limite.setDate(limite.getDate() - 60);
+        const { data, error } = await supabaseClient
+          .from('releves_vilvolt')
+          .select('velos_disponibles,date_releve')
+          .eq('nom_station', station)
+          .gte('date_releve', limite.toISOString())
+          .order('date_releve', { ascending: false })
+          .limit(5000);
+        if (error || !data) return [];
+        return data;
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function calculerTendanceRecente(releves, h, m) {
+      if (!releves || releves.length < 2) return 0;
+      const maintenant = Date.now();
+      const points = releves
+        .map(r => ({
+          t: new Date(r.date_releve).getTime(),
+          v: Number(r.velos_disponibles)
+        }))
+        .filter(r => Number.isFinite(r.t) && Number.isFinite(r.v))
+        .filter(r => maintenant - r.t <= 20 * 60 * 1000)
+        .sort((a,b) => a.t-b.t);
+
+      if (points.length < 2) return 0;
+      const debut = points[0], fin = points[points.length - 1];
+      const minutes = Math.max(1, (fin.t - debut.t) / 60000);
+      return (fin.v - debut.v) / minutes;
+    }
+
+    function prevoir5Minutes(h, m, base, tendance, facteurAdaptatif, facteurContexte) {
+      const resultat = [];
+      for (let i = 0; i <= PREVISION_MAX_MINUTES; i++) {
+        const valeurTendance = base + tendance * i;
+        const valeur = Math.max(0, valeurTendance * facteurAdaptatif / Math.max(1, facteurContexte));
+        resultat.push({ minute: i, velos: valeur });
+      }
+      return resultat;
+    }
+
+    function analyserRemplissage(releves) {
+      if (!releves || releves.length < 2) return null;
+      const maintenant = Date.now();
+      const points = releves
+        .map(r => ({ t: new Date(r.date_releve).getTime(), v: Number(r.velos_disponibles) }))
+        .filter(r => Number.isFinite(r.t) && Number.isFinite(r.v))
+        .filter(r => maintenant - r.t <= 15 * 60 * 1000)
+        .sort((a,b) => a.t-b.t);
+      if (points.length < 2) return null;
+      const d = points[points.length - 1].v - points[0].v;
+      if (d <= -3) return { emoji:'🔻', texte:`Station en forte baisse : ${Math.round(Math.abs(d))} vélo(s) perdu(s) en ~15 min.` };
+      if (d <= -1) return { emoji:'↘️', texte:`Station en baisse : ${Math.round(Math.abs(d))} vélo(s) en moins récemment.` };
+      if (d >= 3) return { emoji:'🔺', texte:`Station en remplissage : +${Math.round(d)} vélo(s) en ~15 min.` };
+      if (d >= 1) return { emoji:'↗️', texte:`Station en hausse : +${Math.round(d)} vélo(s) récemment.` };
+      return { emoji:'➡️', texte:'Station relativement stable sur les dernières minutes.' };
+    }
+
+    function analyserEffetGarePrecis(h, m) {
+      const train = obtenirProchaineArriveeTrain(h, m);
+      if (!train) {
+        return { facteur: 1, texte: 'Aucune arrivée ferroviaire disponible.' };
+      }
+
+      const facteur = train.delta <= 2 ? 1.18 : train.delta <= 5 ? 1.11 : train.delta <= 10 ? 1.06 : 1;
+      return {
+        facteur,
+        texte: `Prochaine arrivée : ${String(train.h).padStart(2, '0')}h${String(train.m).padStart(2, '0')} — ${train.type} ${train.numero}, en provenance de ${train.provenance}, dans ${train.delta} min.`
+      };
+    }
+
     async function calculerConseilMinute() {
       const hVise = parseInt(document.getElementById('heureSelect').value);
       const mVise = parseInt(document.getElementById('minuteSelect').value);
@@ -732,127 +871,103 @@
 
       if (!donneesGlobales || donneesGlobales.length === 0) {
         boxEl.className = "reservation-box";
-        document.getElementById('conseilTexte').innerHTML =
-          `Aucune donnée disponible pour cet horaire ou cette station.`;
+        document.getElementById('conseilTexte').innerHTML = `Aucune donnée disponible pour cet horaire ou cette station.`;
         return;
       }
 
+      const zone = estZoneEpinalGolbey(station);
       const velosVises = estimerVelosAMinute(hVise, mVise);
+      const jour = parseInt(document.getElementById('jourSelect').value);
+      const facteurAdaptatif = lireCorrectionAdaptive(station, jour, hVise);
 
-      let mPrecedente = mVise - 10;
-      let hPrecedente = hVise;
-      if (mPrecedente < 0) {
-        mPrecedente += 60;
-        hPrecedente = (hVise - 1 + 24) % 24;
-      }
+      // Signaux déjà présents dans le programme + effet gare plus précis.
+      const signalEcoles = zone ? obtenirSignalEcoles(hVise, mVise) : { facteur:1, texte:'' };
+      const signalTrainBase = zone ? obtenirSignalFerroviaire(hVise, mVise) : { facteur:1, texte:'' };
+      const signalTrainPrecis = zone ? analyserEffetGarePrecis(hVise, mVise) : { facteur:1, texte:'' };
+      const facteurHoraire = zone ? obtenirFacteurHoraireEpinal(hVise, mVise) : 1;
+      const facteurContexte = Math.max(facteurHoraire, signalEcoles.facteur, signalTrainBase.facteur, signalTrainPrecis.facteur);
 
-      const velosAvant = estimerVelosAMinute(hPrecedente, mPrecedente);
-      const debitConsommation = (velosAvant - velosVises) / 10;
+      // Données réelles récentes : servent à détecter la direction de la station
+      // et à adapter progressivement la prévision sans modifier la base SQL.
+      const relevesRecents = await chargerHistoriqueRecent(station);
+      const tendance = calculerTendanceRecente(relevesRecents, hVise, mVise);
+      const remplissage = analyserRemplissage(relevesRecents);
 
+      // Prévision stricte sur 0 à 5 minutes.
+      const previsions = prevoir5Minutes(hVise, mVise, velosVises, tendance, facteurAdaptatif, facteurContexte);
+      const pirePrevision = Math.min(...previsions.map(p => p.velos));
+      const meilleurePrevision = Math.max(...previsions.map(p => p.velos));
+      const p5 = previsions[previsions.length - 1].velos;
+
+      let debitConsommation = tendance < 0 ? -tendance : 0;
       let delaiRecommande = delaiMin;
-      if (debitConsommation > 0.3) {
-        delaiRecommande = Math.min(5, delaiMin + 2);
-      } else if (debitConsommation > 0.15) {
-        delaiRecommande = Math.min(5, delaiMin + 1);
-      }
+      if (debitConsommation > 0.3) delaiRecommande = Math.min(5, delaiMin + 2);
+      else if (debitConsommation > 0.15) delaiRecommande = Math.min(5, delaiMin + 1);
+      if (zone && facteurContexte >= 1.15) delaiRecommande = Math.min(5, delaiRecommande + 1);
+      if (pirePrevision <= 0.6) delaiRecommande = Math.min(5, Math.max(delaiRecommande, 4));
 
-      const signalEcoles = estZoneEpinalGolbey(station)
-        ? obtenirSignalEcoles(hVise, mVise)
-        : { actif: false, facteur: 1, texte: '' };
-      const signalTrain = estZoneEpinalGolbey(station)
-        ? obtenirSignalFerroviaire(hVise, mVise)
-        : { actif: false, facteur: 1, texte: '' };
-
-      // Les signaux ne remplacent jamais l'historique : ils servent uniquement
-      // à renforcer la prudence sur les créneaux sensibles.
-      const facteurHoraire = estZoneEpinalGolbey(station)
-        ? obtenirFacteurHoraireEpinal(hVise, mVise)
-        : 1;
-
-      const facteurContexte = Math.max(
-        facteurHoraire,
-        signalEcoles.facteur,
-        signalTrain.facteur
-      );
-
-      if (estZoneEpinalGolbey(station) && facteurContexte >= 1.18) {
-        delaiRecommande = Math.min(5, delaiRecommande + 1);
-      }
-
-      // Petit balayage prospectif : on ne regarde jamais plus de 5 minutes
-      // devant l'horaire choisi.
-      let pirePrevision = velosVises;
-      for (let i = 1; i <= PREVISION_MAX_MINUTES; i++) {
-        const total = hVise * 60 + mVise + i;
-        const hh = Math.floor(total / 60) % 24;
-        const mm = total % 60;
-        let v = estimerVelosAMinute(hh, mm);
-        if (estZoneEpinalGolbey(station)) {
-          v /= facteurContexte;
+      // Mise à jour légère de l'apprentissage : on compare la mesure la plus
+      // récente au niveau historique attendu. L'effet reste plafonné.
+      if (relevesRecents.length) {
+        const dernier = relevesRecents
+          .map(r => ({t:new Date(r.date_releve).getTime(),v:Number(r.velos_disponibles)}))
+          .filter(r=>Number.isFinite(r.t)&&Number.isFinite(r.v))
+          .sort((a,b)=>b.t-a.t)[0];
+        if (dernier && velosVises > 0.5 && Date.now()-dernier.t < 30*60*1000) {
+          const observation = Math.max(0.75, Math.min(1.25, dernier.v / velosVises));
+          enregistrerCorrectionAdaptive(station, jour, hVise, observation);
         }
-        pirePrevision = Math.min(pirePrevision, v);
-      }
-
-      if (pirePrevision <= 0.6) {
-        delaiRecommande = Math.min(5, Math.max(delaiRecommande, 4));
       }
 
       let mResa = mVise - delaiRecommande;
       let hResa = hVise;
-      if (mResa < 0) {
-        mResa += 60;
-        hResa = (hVise - 1 + 24) % 24;
-      }
+      if (mResa < 0) { mResa += 60; hResa = (hVise - 1 + 24) % 24; }
 
-      const velosResa = estimerVelosAMinute(hResa, mResa);
-      const txtVise = `${String(hVise).padStart(2, '0')}:${String(mVise).padStart(2, '0')}`;
-      const txtResa = `${String(hResa).padStart(2, '0')}:${String(mResa).padStart(2, '0')}`;
+      const txtVise = `${String(hVise).padStart(2,'0')}:${String(mVise).padStart(2,'0')}`;
+      const txtResa = `${String(hResa).padStart(2,'0')}:${String(mResa).padStart(2,'0')}`;
+      const confiance = Math.round(Math.max(45, Math.min(95,
+        65 + (relevesRecents.length > 20 ? 10 : 0) + (Math.abs(tendance) < 0.15 ? 8 : 0) - (facteurContexte > 1.15 ? 5 : 0)
+      )));
 
-      boxEl.className = "reservation-box";
+      boxEl.className = 'reservation-box';
+      let conseilHTML = `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
 
-      let conseilHTML =
-        `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
+      conseilHTML += `<b> Prévision +5 min :</b> ${p5.toFixed(1)} vélo(s) probables. `;
+      conseilHTML += `Plage prévue sur 5 min : <b>${pirePrevision.toFixed(1)} à ${meilleurePrevision.toFixed(1)}</b> vélo(s).<br>`;
+      conseilHTML += `<small>Confiance estimée : ${confiance} % · correction adaptative hebdomadaire : ×${facteurAdaptatif.toFixed(2)}</small><br><br>`;
 
-      if (estZoneEpinalGolbey(station)) {
-        conseilHTML += `<small>${signalTrain.texte}<br>${signalEcoles.texte}</small><br><br>`;
+      if (zone) {
+        conseilHTML += `<small>${signalTrainBase.texte}<br>${signalEcoles.texte}`;
+        if (remplissage) conseilHTML += `<br>${remplissage.emoji} ${remplissage.texte}`;
+        conseilHTML += `</small><br><br>`;
+      } else if (remplissage) {
+        conseilHTML += `<small>${remplissage.emoji} ${remplissage.texte}</small><br><br>`;
       }
 
       if (velosVises <= 0.6 || pirePrevision <= 0.6) {
-        boxEl.classList.add("critical");
+        boxEl.classList.add('critical');
         conseilHTML += `<span class="alert-warn">Attention : risque élevé d'absence de vélos dans les prochaines minutes.</span><br>`;
-        conseilHTML += `La prévision est volontairement limitée à <b>${PREVISION_MAX_MINUTES} minutes</b> autour de ${txtVise}.<br>`;
         conseilHTML += `Conseil : lancez la réservation dès <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant votre départ).`;
-      } else if (debitConsommation > 0.2 || facteurContexte >= 1.15) {
-        boxEl.classList.add("warning");
-        const perteTotale = (Math.max(0, debitConsommation) * 5).toFixed(1);
-        conseilHTML += `<b>Période de demande renforcée :</b> baisse historique récente d'environ ${perteTotale} vélo(s) toutes les 5 minutes.`;
-        if (delaiRecommande > delaiMin) {
-          conseilHTML += `<br>L'anticipation recommandée passe de ${delaiMin} à ${delaiRecommande} minutes.`;
-        }
-        conseilHTML += `<br>Conseil : effectuez votre réservation à <span class="highlight">${txtResa}</span> (environ ${velosResa.toFixed(1)} vélo(s) à cet instant).`;
+      } else if (debitConsommation > 0.2 || facteurContexte >= 1.15 || pirePrevision < velosVises - 0.5) {
+        boxEl.classList.add('warning');
+        conseilHTML += `<b>Période de demande renforcée :</b> la tendance actuelle indique une baisse d'environ ${Math.max(0, debitConsommation*5).toFixed(1)} vélo(s) sur 5 minutes.`;
+        conseilHTML += `<br>Conseil : effectuez votre réservation à <span class="highlight">${txtResa}</span>.`;
       } else {
-        conseilHTML += `<b>Fréquentation normale :</b> la disponibilité reste relativement stable sur ce créneau.<br>`;
+        conseilHTML += `<b>Fréquentation normale :</b> la disponibilité devrait rester relativement stable sur les 5 prochaines minutes.<br>`;
         conseilHTML += `Conseil : vous pouvez réserver votre vélo à <span class="highlight">${txtResa}</span> (${delaiRecommande} minutes avant).`;
       }
 
-      // Si la station sélectionnée est faible, proposer une station voisine
-      // réellement alimentée en vélos. Le déplacement ajoute automatiquement
-      // 5 minutes d'anticipation à la recommandation.
-      if (estZoneEpinalGolbey(station) && (velosVises <= 1.5 || pirePrevision <= 1.5)) {
+      // Station voisine : logique existante conservée, avec +5 min de trajet.
+      if (zone && (velosVises <= 1.5 || pirePrevision <= 1.5)) {
         const voisines = await trouverStationsVoisines(station);
         if (voisines.length > 0) {
           const meilleure = voisines[0];
           const anticipationVoisine = Math.min(5, Math.max(delaiMin, delaiRecommande));
-          let totalAvant = anticipationVoisine + TEMPS_DEPLACEMENT_VOISINE;
-          let hAlt = hVise;
-          let mAlt = mVise - totalAvant;
-          while (mAlt < 0) {
-            mAlt += 60;
-            hAlt = (hAlt - 1 + 24) % 24;
-          }
-
+          const totalAvant = anticipationVoisine + TEMPS_DEPLACEMENT_VOISINE;
+          let hAlt = hVise, mAlt = mVise - totalAvant;
+          while (mAlt < 0) { mAlt += 60; hAlt = (hAlt - 1 + 24) % 24; }
           conseilHTML += `<br><b>🚲 Alternative :</b> ${meilleure.nom} est à environ ${Math.round(meilleure.distance)} m, avec <b>${meilleure.velos}</b> vélo(s) actuellement disponible(s).`;
-          conseilHTML += `<br>En choisissant cette station, <b>+${TEMPS_DEPLACEMENT_VOISINE} min</b> de déplacement sont automatiquement ajoutées : réservation conseillée vers <span class="highlight">${String(hAlt).padStart(2, '0')}:${String(mAlt).padStart(2, '0')}</span>.`;
+          conseilHTML += `<br>Avec les <b>+${TEMPS_DEPLACEMENT_VOISINE} min</b> de déplacement : réservation conseillée vers <span class="highlight">${String(hAlt).padStart(2,'0')}:${String(mAlt).padStart(2,'0')}</span>.`;
         }
       }
 
