@@ -555,7 +555,7 @@
         return {
           actif: true,
           facteur: 1.22,
-          texte: ' >Signal écoles : sortie de cours proche, demande potentiellement en hausse.'
+          texte: 'Signal écoles : sortie de cours proche, demande potentiellement en hausse.'
         };
       }
 
@@ -563,7 +563,7 @@
         return {
           actif: true,
           facteur: 1.08,
-          texte: ' >Signal écoles : arrivée/reprise des cours proche.'
+          texte: 'Signal écoles : arrivée/reprise des cours proche.'
         };
       }
 
@@ -572,7 +572,7 @@
         return {
           actif: true,
           facteur: 1.12,
-          texte: ' >Signal écoles : créneau méridien, déplacements scolaires possibles.'
+          texte: 'Signal écoles : créneau méridien, déplacements scolaires possibles.'
         };
       }
 
@@ -580,14 +580,14 @@
         return {
           actif: true,
           facteur: 1.15,
-          texte: '> Signal écoles : fin de journée scolaire, demande potentiellement renforcée.'
+          texte: 'Signal écoles : fin de journée scolaire, demande potentiellement renforcée.'
         };
       }
 
       return {
         actif: false,
         facteur: 1,
-        texte: '> Signal écoles : pas de pic scolaire identifié sur ce créneau.'
+        texte: 'Signal écoles : pas de pic scolaire identifié sur ce créneau.'
       };
     }
 
@@ -686,44 +686,34 @@
 
     function obtenirSignalFerroviaire(h, m) {
       const cible = h * 60 + m;
-      const trainsDuJour = ARRIVEES_GARE_EPINAL
-        .slice()
-        .sort((a, b) => minutesTrain(a) - minutesTrain(b));
 
-      const prochain = trainsDuJour
-        .map(train => ({
-          train,
-          delta: minutesTrain(train) - cible
-        }))
-        .find(x => x.delta >= 0);
+      // On n'affiche que les prochaines arrivées par rapport à l'heure demandée.
+      // Cela évite de remplir la recommandation avec toute la journée.
+      const prochaines = obtenirProchainesArriveesTrains(h, m, 3);
+      const prochainEffectif = prochaines[0] || null;
 
-      const prochainEffectif = prochain || {
-        train: trainsDuJour[0],
-        delta: minutesTrain(trainsDuJour[0]) + 1440 - cible
-      };
-
-      const facteur = prochainEffectif.delta <= 2 ? 1.18
-        : prochainEffectif.delta <= 5 ? 1.11
-        : prochainEffectif.delta <= 10 ? 1.06
+      const facteur = prochainEffectif
+        ? (prochainEffectif.delta <= 2 ? 1.18
+          : prochainEffectif.delta <= 5 ? 1.11
+          : prochainEffectif.delta <= 10 ? 1.06
+          : 1)
         : 1;
 
-      const lignes = trainsDuJour.map(train => {
-        const minuteTrain = minutesTrain(train);
-        let delta = minuteTrain - cible;
-        if (delta < 0) delta += 1440;
-
-        let statut;
-        if (delta === 0) statut = 'maintenant';
-        else if (delta < 60) statut = `dans ${delta} min`;
-        else statut = `dans ${Math.floor(delta / 60)} h ${delta % 60} min`;
-
+      const lignes = prochaines.map(train => {
         const numero = train.numero ? ` ${train.numero}` : '';
+        let statut;
+        if (train.delta === 0) statut = 'maintenant';
+        else if (train.delta < 60) statut = `dans ${train.delta} min`;
+        else statut = `dans ${Math.floor(train.delta / 60)} h ${train.delta % 60} min`;
+
         return `${String(train.h).padStart(2, '0')}h${String(train.m).padStart(2, '0')} — ${train.type}${numero}, en provenance de ${train.provenance} (${statut})`;
       });
 
       return {
         facteur,
-        texte: `Arrivées gare d'Épinal sur la journée :<br>${lignes.join('<br>')}`
+        texte: lignes.length
+          ? `Prochaines arrivées à la gare d'Épinal :<br>${lignes.join('<br>')}`
+          : 'Aucune arrivée ferroviaire disponible.'
       };
     }
 
@@ -912,11 +902,11 @@
         .sort((a,b) => a.t-b.t);
       if (points.length < 2) return null;
       const d = points[points.length - 1].v - points[0].v;
-      if (d <= -3) return { emoji:'🔻', texte:`Station en forte baisse : ${Math.round(Math.abs(d))} vélo(s) perdu(s) en ~15 min.` };
-      if (d <= -1) return { emoji:'↘️', texte:`Station en baisse : ${Math.round(Math.abs(d))} vélo(s) en moins récemment.` };
-      if (d >= 3) return { emoji:'🔺', texte:`Station en remplissage : +${Math.round(d)} vélo(s) en ~15 min.` };
-      if (d >= 1) return { emoji:'↗️', texte:`Station en hausse : +${Math.round(d)} vélo(s) récemment.` };
-      return { emoji:'➡️', texte:'Station relativement stable sur les dernières minutes.' };
+      if (d <= -3) return { emoji:'', texte:`Station en forte baisse : ${Math.round(Math.abs(d))} vélo(s) perdu(s) en ~15 min.` };
+      if (d <= -1) return { emoji:'', texte:`Station en baisse : ${Math.round(Math.abs(d))} vélo(s) en moins récemment.` };
+      if (d >= 3) return { emoji:'', texte:`Station en remplissage : +${Math.round(d)} vélo(s) en ~15 min.` };
+      if (d >= 1) return { emoji:'', texte:`Station en hausse : +${Math.round(d)} vélo(s) récemment.` };
+      return { emoji:'', texte:'Station relativement stable sur les dernières minutes.' };
     }
 
     function analyserEffetGarePrecis(h, m) {
@@ -1015,16 +1005,16 @@
       boxEl.className = 'reservation-box';
       let conseilHTML = `<b>À ${txtVise} :</b> environ <b>${velosVises.toFixed(1)} vélo(s)</b> disponible(s) à la station ${station}.<br><br>`;
 
-      conseilHTML += `<b>🔮 Prévision +5 min :</b> ${p5.toFixed(1)} vélo(s) probables. `;
+      conseilHTML += `<b>Prévision +5 min :</b> ${p5.toFixed(1)} vélo(s) probables. `;
       conseilHTML += `Plage prévue sur 5 min : <b>${pirePrevision.toFixed(1)} à ${meilleurePrevision.toFixed(1)}</b> vélo(s).<br>`;
       conseilHTML += `<small>Confiance estimée : ${confiance} % · correction adaptative hebdomadaire : ×${facteurAdaptatif.toFixed(2)}</small><br><br>`;
 
       if (zone) {
         conseilHTML += `<small>${signalTrainBase.texte}<br>${signalEcoles.texte}`;
-        if (remplissage) conseilHTML += `<br>${remplissage.emoji} ${remplissage.texte}`;
+        if (remplissage) conseilHTML += `<br>${remplissage.texte}`;
         conseilHTML += `</small><br><br>`;
       } else if (remplissage) {
-        conseilHTML += `<small>${remplissage.emoji} ${remplissage.texte}</small><br><br>`;
+        conseilHTML += `<small>${remplissage.texte}</small><br><br>`;
       }
 
       if (velosVises <= 0.6 || pirePrevision <= 0.6) {
@@ -1049,7 +1039,7 @@
           const totalAvant = anticipationVoisine + TEMPS_DEPLACEMENT_VOISINE;
           let hAlt = hVise, mAlt = mVise - totalAvant;
           while (mAlt < 0) { mAlt += 60; hAlt = (hAlt - 1 + 24) % 24; }
-          conseilHTML += `<br><b>🚲 Alternative :</b> ${meilleure.nom} est à environ ${Math.round(meilleure.distance)} m, avec <b>${meilleure.velos}</b> vélo(s) actuellement disponible(s).`;
+          conseilHTML += `<br><b>Alternative :</b> ${meilleure.nom} est à environ ${Math.round(meilleure.distance)} m, avec <b>${meilleure.velos}</b> vélo(s) actuellement disponible(s).`;
           conseilHTML += `<br>Avec les <b>+${TEMPS_DEPLACEMENT_VOISINE} min</b> de déplacement : réservation conseillée vers <span class="highlight">${String(hAlt).padStart(2,'0')}:${String(mAlt).padStart(2,'0')}</span>.`;
         }
       }
